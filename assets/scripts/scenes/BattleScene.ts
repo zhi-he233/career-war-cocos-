@@ -30,20 +30,25 @@ export class BattleScene extends Component {
 
   private gameManager: GameManager | null = null;
   private room: Room | null = null;
+  private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
+  private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.on(Button.EventType.CLICK, this.rollDice, this);
 
     const room = this.gameManager.getRoom();
+    this.statusText = this.gameManager.getStatus();
     if (room) this.render(room);
   }
 
   onDestroy(): void {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.off(Button.EventType.CLICK, this.rollDice, this);
   }
 
@@ -56,7 +61,7 @@ export class BattleScene extends Component {
       const title = room.phase === 'gameOver'
         ? `Game Over | Winner: ${this.getPlayerName(room.winnerId)}`
         : `Battle | Active: ${actor?.nickname ?? '-'}`;
-      this.phaseLabel.string = title;
+      this.phaseLabel.string = `${title}\n${this.statusText}`;
     }
 
     if (this.playersLabel) {
@@ -75,7 +80,7 @@ export class BattleScene extends Component {
     }
 
     if (this.logLabel) {
-      this.logLabel.string = room.battleLog.slice(0, 12).map((event) => event.message).join('\n');
+      this.logLabel.string = this.latestEvents(room, 12).map((event) => event.message).join('\n');
     }
 
     if (this.rollButton) {
@@ -123,6 +128,7 @@ export class BattleScene extends Component {
 
     if (actions.length === 0) {
       const button = this.createButton('Action_normal_attack', 'Attack', 0, 0, 220, 58, 20, this.actionListNode);
+      button.interactable = this.canResolveDecision(room);
       button.node.on(Button.EventType.CLICK, () => this.confirmAction('normal_attack'), this);
       return;
     }
@@ -138,7 +144,7 @@ export class BattleScene extends Component {
         15,
         this.actionListNode!
       );
-      button.interactable = action.enabled === true;
+      button.interactable = action.enabled === true && this.canResolveDecision(room);
       button.node.on(Button.EventType.CLICK, () => this.confirmAction(action.id, action), this);
     });
   }
@@ -148,14 +154,20 @@ export class BattleScene extends Component {
     label.string = text;
   }
 
+  private renderStatus(status: string): void {
+    this.statusText = status;
+    if (this.room) this.render(this.room);
+  }
+
   private selectTarget(targetId: string): void {
+    if (!this.room || !this.canLocalAct(this.room)) return;
     this.gameManager?.emitAck('selectTarget', { targetId });
   }
 
   private rollDice(): void {
     const room = this.room;
     const actor = room ? this.getActor(room) : null;
-    if (!room || !actor || room.pendingRollDecision) return;
+    if (!room || !actor || room.pendingRollDecision || !this.canLocalAct(room)) return;
 
     const target = actor.selectedTargetId
       ? room.players.find((player) => player.id === actor.selectedTargetId && this.canTarget(actor, player))
@@ -174,7 +186,7 @@ export class BattleScene extends Component {
 
   private confirmAction(actionType: RollActionType, action?: RollDecisionAvailableAction): void {
     const decision = this.room?.pendingRollDecision;
-    if (!this.room || !decision) return;
+    if (!this.room || !decision || !this.canResolveDecision(this.room)) return;
 
     const choice: RollDecisionChoice = actionType;
     this.gameManager?.emitAck('confirmRollDecision', {
@@ -200,9 +212,19 @@ export class BattleScene extends Component {
 
   private canLocalAct(room: Room): boolean {
     const actor = this.getActor(room);
-    if (!actor || actor.isDead || actor.isBot) return false;
-    if (!this.gameManager?.localClientId) return true;
-    return actor.clientId === this.gameManager.localClientId || actor.controllerId === this.gameManager.localClientId || !actor.isBot;
+    return this.canLocalControlPlayer(actor);
+  }
+
+  private canResolveDecision(room: Room): boolean {
+    const actorId = room.pendingRollDecision?.actorId;
+    const actor = actorId ? room.players.find((player) => player.id === actorId) : null;
+    return this.canLocalControlPlayer(actor ?? null);
+  }
+
+  private canLocalControlPlayer(player: Player | null): boolean {
+    const localClientId = this.gameManager?.localClientId;
+    if (!player || player.isDead || player.isBot || !localClientId) return false;
+    return player.clientId === localClientId || player.controllerId === localClientId;
   }
 
   private canTarget(actor: Player, target: Player): boolean {
@@ -225,12 +247,18 @@ export class BattleScene extends Component {
   }
 
   private latestRoll(room: Room): string {
-    const event = room.battleLog.find((item) => item.type === 'roll' && item.dice?.length);
+    const event = this.latestEvents(room).find((item) => item.type === 'roll' && item.dice?.length);
     return event?.dice?.join('/') ?? '';
   }
 
+  private latestEvents(room: Room, limit = room.battleLog.length): Room['battleLog'] {
+    return [...room.battleLog]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit);
+  }
+
   private ensureMinimalUi(): void {
-    this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 555, 680, 42, 22, this.node);
+    this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 64, 20, this.node);
     this.playersLabel ??= this.ensureLabel('PlayersLabel', 0, 375, 680, 265, 17, this.node);
     this.targetListNode ??= this.ensureNode('TargetList', 0, 160, 680, 74, this.node);
     this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 65, 680, 58, 28, this.node);

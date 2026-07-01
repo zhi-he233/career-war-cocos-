@@ -35,8 +35,12 @@ export class GameManager extends Component {
   room: Room | null = null;
   localClientId = '';
   localNickname = '';
+  statusText = 'Idle';
 
   private readonly handleRoomUpdateBound = (data: Room) => this.handleRoomUpdate(data);
+  private readonly handleNetworkConnectedBound = (socketId: string | undefined) => this.setStatus(`Connected ${socketId ?? ''}`.trim());
+  private readonly handleNetworkDisconnectedBound = (reason: unknown) => this.setStatus(`Disconnected: ${String(reason ?? 'unknown')}`);
+  private readonly handleNetworkErrorBound = (error: unknown) => this.setStatus(`Network error: ${this.errorMessage(error)}`);
 
   static getInstance(): GameManager {
     if (GameManager.instance) return GameManager.instance;
@@ -60,11 +64,17 @@ export class GameManager extends Component {
     this.networkManager = this.networkManager ?? NetworkManager.getInstance();
     this.networkManager.on<Room>('roomUpdate', this.handleRoomUpdateBound);
     this.networkManager.on<Room>('gameStateUpdated', this.handleRoomUpdateBound);
+    this.networkManager.node.on(GameEvents.NetworkConnected, this.handleNetworkConnectedBound, this);
+    this.networkManager.node.on(GameEvents.NetworkDisconnected, this.handleNetworkDisconnectedBound, this);
+    this.networkManager.node.on(GameEvents.NetworkError, this.handleNetworkErrorBound, this);
   }
 
   onDestroy(): void {
     this.networkManager?.off<Room>('roomUpdate', this.handleRoomUpdateBound);
     this.networkManager?.off<Room>('gameStateUpdated', this.handleRoomUpdateBound);
+    this.networkManager?.node.off(GameEvents.NetworkConnected, this.handleNetworkConnectedBound, this);
+    this.networkManager?.node.off(GameEvents.NetworkDisconnected, this.handleNetworkDisconnectedBound, this);
+    this.networkManager?.node.off(GameEvents.NetworkError, this.handleNetworkErrorBound, this);
     if (GameManager.instance === this) {
       GameManager.instance = null;
     }
@@ -72,6 +82,7 @@ export class GameManager extends Component {
 
   connect(url: string): void {
     this.networkManager = this.networkManager ?? NetworkManager.getInstance();
+    this.setStatus(`Connecting ${url}`);
     this.networkManager.connect(url);
   }
 
@@ -86,7 +97,10 @@ export class GameManager extends Component {
     callback?: (response: TResponse) => void
   ): void {
     this.networkManager = this.networkManager ?? NetworkManager.getInstance();
-    this.networkManager.emitAck(event, data, callback);
+    this.networkManager.emitAck(event, data, (response: TResponse) => {
+      this.handleAckResponse(event, response);
+      callback?.(response);
+    });
   }
 
   onRoomUpdated(callback: (room: Room) => void, target?: unknown): void {
@@ -97,8 +111,25 @@ export class GameManager extends Component {
     this.node.off(GameEvents.RoomUpdated, callback, target);
   }
 
+  onStatusUpdated(callback: (status: string) => void, target?: unknown): void {
+    this.node.on(GameEvents.StatusUpdated, callback, target);
+  }
+
+  offStatusUpdated(callback: (status: string) => void, target?: unknown): void {
+    this.node.off(GameEvents.StatusUpdated, callback, target);
+  }
+
   getRoom(): Room | null {
     return this.room;
+  }
+
+  getStatus(): string {
+    return this.statusText;
+  }
+
+  setStatus(status: string): void {
+    this.statusText = status;
+    this.node.emit(GameEvents.StatusUpdated, status);
   }
 
   setLocalPlayer(clientId: string, nickname: string): void {
@@ -130,6 +161,7 @@ export class GameManager extends Component {
     }
 
     this.node.emit(GameEvents.RoomUpdated, this.room);
+    this.setStatus(`Room ${this.room.id} | ${this.room.phase}`);
 
     if (previousPhase !== this.room.phase) {
       this.node.emit(GameEvents.RoomPhaseChanged, this.room.phase, previousPhase);
@@ -137,6 +169,28 @@ export class GameManager extends Component {
         this.routeByPhase(this.room.phase);
       }
     }
+  }
+
+  private handleAckResponse(event: string, response: unknown): void {
+    if (!response || typeof response !== 'object') return;
+    const ack = response as { ok?: boolean; error?: unknown; room?: Room };
+    if (ack.ok === false) {
+      this.setStatus(`${event} failed: ${this.errorMessage(ack.error)}`);
+      return;
+    }
+    if (ack.ok === true) {
+      this.setStatus(`${event} ok`);
+      if (ack.room) this.applyRoomUpdate(ack.room);
+    }
+  }
+
+  private errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) {
+      return String((error as { message?: unknown }).message ?? 'unknown');
+    }
+    return String(error ?? 'unknown');
   }
 
   private routeByPhase(phase: RoomPhase): void {

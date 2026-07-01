@@ -30,20 +30,25 @@ export class LobbyScene extends Component {
   private room: Room | null = null;
   private selectedCharacterId: CharacterId = 'boxer';
   private selectedSummonerSkillId: SummonerSkillId = 'lucky_plus_one';
+  private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
+  private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.startGameButton?.node.on(Button.EventType.CLICK, this.startGame, this);
 
     const room = this.gameManager.getRoom();
+    this.statusText = this.gameManager.getStatus();
     if (room) this.render(room);
   }
 
   onDestroy(): void {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.startGameButton?.node.off(Button.EventType.CLICK, this.startGame, this);
   }
 
@@ -82,7 +87,7 @@ export class LobbyScene extends Component {
     if (me?.summonerSkillId) this.selectedSummonerSkillId = me.summonerSkillId;
 
     if (this.statusLabel) {
-      this.statusLabel.string = `Room ${room.id} | ${room.gameMode ?? 'classic'} | ${room.players.length}/${room.settings.maxPlayers}`;
+      this.statusLabel.string = `Room ${room.id} | ${room.gameMode ?? 'classic'} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}`;
     }
     if (this.playerListLabel) {
       this.playerListLabel.string = room.players
@@ -100,6 +105,11 @@ export class LobbyScene extends Component {
 
     this.renderCharacterButtons(room);
     this.renderSkillButtons();
+  }
+
+  private renderStatus(status: string): void {
+    this.statusText = status;
+    if (this.room) this.render(this.room);
   }
 
   private renderCharacterButtons(room: Room): void {
@@ -161,7 +171,7 @@ export class LobbyScene extends Component {
   }
 
   private ensureMinimalUi(): void {
-    this.statusLabel ??= this.ensureLabel('StatusLabel', 0, 555, 680, 44, 22);
+    this.statusLabel ??= this.ensureLabel('StatusLabel', 0, 545, 680, 64, 20);
     this.playerListLabel ??= this.ensureLabel('PlayerListLabel', 0, 430, 680, 155, 18);
     this.selectionLabel ??= this.ensureLabel('SelectionLabel', 0, 320, 680, 42, 20);
     this.characterListNode ??= this.ensureNode('CharacterList', 0, 235, 680, 260);

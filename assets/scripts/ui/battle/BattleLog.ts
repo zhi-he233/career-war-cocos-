@@ -1,4 +1,4 @@
-import { _decorator, Component, Label } from 'cc';
+import { _decorator, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../../core/GameManager';
 import type { Room } from '../../shared/types';
 
@@ -16,6 +16,7 @@ export class BattleLog extends Component {
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
 
   onLoad(): void {
+    this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     const room = this.gameManager.getRoom();
@@ -29,8 +30,33 @@ export class BattleLog extends Component {
   private render(room: Room): void {
     if (!this.logLabel) return;
     this.logLabel.string = room.battleLog
+      .slice()
+      .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, this.maxLines)
       .map((event) => event.message)
       .join('\n');
+  }
+
+  private ensureMinimalUi(): void {
+    const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
+    if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) {
+      transform.setContentSize(680, 300);
+    }
+
+    this.logLabel ??= this.ensureLabel('LogLabel', 0, 0, 660, 280, 16);
+  }
+
+  private ensureLabel(name: string, x: number, y: number, width: number, height: number, fontSize: number): Label {
+    const node = this.node.getChildByName(name) ?? new Node(name);
+    if (!node.parent) this.node.addChild(node);
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    transform.setContentSize(width, height);
+
+    const label = node.getComponent(Label) ?? node.addComponent(Label);
+    label.fontSize = fontSize;
+    label.lineHeight = fontSize + 5;
+    label.enableWrapText = true;
+    return label;
   }
 }

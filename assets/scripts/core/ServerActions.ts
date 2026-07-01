@@ -12,6 +12,10 @@ export class ServerActions {
     this.gameManager.emitAck('joinRoom', payload, callback);
   }
 
+  requestRoomList(callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('requestRoomList', {}, callback);
+  }
+
   chooseCharacter(characterId: CharacterId): void {
     this.gameManager.emitAck('chooseCharacter', { characterId });
   }

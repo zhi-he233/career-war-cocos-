@@ -25,18 +25,23 @@ export class RogueliteScene extends Component {
 
   private gameManager: GameManager | null = null;
   private room: Room | null = null;
+  private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
+  private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     const room = this.gameManager.getRoom();
+    this.statusText = this.gameManager.getStatus();
     if (room) this.render(room);
   }
 
   onDestroy(): void {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
+    this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
   }
 
   private render(room: Room): void {
@@ -45,8 +50,8 @@ export class RogueliteScene extends Component {
 
     if (this.phaseLabel) {
       this.phaseLabel.string = run
-        ? `Roguelite | ${room.phase} | Stage ${run.stage}/${run.maxStage}`
-        : `Roguelite | ${room.phase}`;
+        ? `Roguelite | ${room.phase} | Stage ${run.stage}/${run.maxStage}\n${this.statusText}`
+        : `Roguelite | ${room.phase}\n${this.statusText}`;
     }
 
     if (this.summaryLabel) {
@@ -55,7 +60,11 @@ export class RogueliteScene extends Component {
     }
 
     if (this.logLabel) {
-      this.logLabel.string = room.battleLog.slice(0, 10).map((event) => event.message).join('\n');
+      this.logLabel.string = [...room.battleLog]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 10)
+        .map((event) => event.message)
+        .join('\n');
     }
 
     this.renderActions(room);
@@ -185,6 +194,11 @@ export class RogueliteScene extends Component {
     });
   }
 
+  private renderStatus(status: string): void {
+    this.statusText = status;
+    if (this.room) this.render(this.room);
+  }
+
   private getNextRouteNodes(room: Room): RogueliteMapNodeSelection[] {
     const stage = Math.max(1, room.roguelite?.stage ?? 1);
     const layer = createRogueliteMapLayer(stage);
@@ -216,7 +230,7 @@ export class RogueliteScene extends Component {
   }
 
   private ensureMinimalUi(): void {
-    this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 555, 680, 44, 22, this.node);
+    this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 66, 20, this.node);
     this.summaryLabel ??= this.ensureLabel('SummaryLabel', 0, 450, 680, 100, 18, this.node);
     this.actionListNode ??= this.ensureNode('ActionList', 0, 125, 680, 430, this.node);
     this.logLabel ??= this.ensureLabel('RogueliteLogLabel', 0, -350, 690, 350, 16, this.node);
