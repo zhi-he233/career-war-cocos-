@@ -1,7 +1,8 @@
-import { _decorator, Component, Label, Button } from 'cc';
+import { _decorator, Component, Label, Button, UITransform, Vec3 } from 'cc';
 import { characters as characterMap } from '../shared/characters';
 import { applyDamageToPlayer, getCombatArmor } from '../shared/combatMath';
-import type { Player, Character } from '../shared/types';
+import { resolveSkill } from '../shared/skillOutcomes';
+import type { Player, Character, CharacterId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -103,6 +104,9 @@ export class BattlePrototype extends Component {
   private battleLog: string[] = [];
 
   onLoad(): void {
+    this.bindMissingProperties();
+    this.applyPrototypeLayout();
+
     // 按钮事件绑定
     if (this.rollButton) {
       this.rollButton.node.on(Button.EventType.CLICK, this.onRollClick, this);
@@ -189,22 +193,35 @@ export class BattlePrototype extends Component {
       return;
     }
 
-    // === 使用 shared 的战斗数学函数 ===
-    // 1. 获取目标护甲
+    const outcome = resolveSkill(
+      this.player.characterId as CharacterId,
+      this.currentRoll,
+      0,
+      this.player.hp,
+      this.player.maxHp,
+      this.enemy.hp,
+      this.enemy.maxHp,
+      this.player.guarding ?? false,
+      this.enemy.flameMarks ?? 0,
+      { useOptionalCharacterSkill: false }
+    );
+
     const enemyArmor = getCombatArmor(this.enemy, {
       activeAttacker: this.player,
     });
 
-    // 2. 应用伤害
-    const result = applyDamageToPlayer(this.enemy, this.currentRoll, {
+    const result = applyDamageToPlayer(this.enemy, outcome.damage, {
       armor: enemyArmor,
+      ignoresShield: outcome.ignoresShield,
     });
 
-    // 3. 更新敌人状态
-    Object.assign(this.enemy, result);
+    this.enemy = result.player;
 
     this.log(`⚔️ ${this.player.nickname} 普通攻击 → ${this.enemy.nickname}`);
-    this.log(`   骰点=${this.currentRoll}, 护甲=${enemyArmor}, 实际伤害=${result.damage}`);
+    this.log(`   骰点=${this.currentRoll}, 基础伤害=${outcome.damage}, 护甲=${enemyArmor}, 扣血=${result.hpDamage}`);
+    for (const message of outcome.skillMessages) {
+      this.log(`   ${message}`);
+    }
     if (result.shieldBlocked > 0) {
       this.log(`   🛡️ 护盾抵挡了 ${result.shieldBlocked} 点`);
     }
@@ -236,24 +253,38 @@ export class BattlePrototype extends Component {
       return;
     }
 
-    // 敌方掷骰
     const enemyRoll = Math.floor(Math.random() * 6) + 1;
     this.log(`🎲 ${this.enemy.nickname} 掷出了 [${enemyRoll}] 点`);
 
-    // 计算玩家护甲（战争骑士有基础1护甲）
+    const outcome = resolveSkill(
+      this.enemy.characterId as CharacterId,
+      enemyRoll,
+      0,
+      this.enemy.hp,
+      this.enemy.maxHp,
+      this.player.hp,
+      this.player.maxHp,
+      this.enemy.guarding ?? false,
+      this.player.flameMarks ?? 0,
+      { useOptionalCharacterSkill: false }
+    );
+
     const playerArmor = getCombatArmor(this.player, {
       activeAttacker: this.enemy,
     });
 
-    // 应用伤害
-    const result = applyDamageToPlayer(this.player, enemyRoll, {
+    const result = applyDamageToPlayer(this.player, outcome.damage, {
       armor: playerArmor,
+      ignoresShield: outcome.ignoresShield,
     });
 
-    Object.assign(this.player, result);
+    this.player = result.player;
 
     this.log(`⚔️ ${this.enemy.nickname} 普通攻击 → ${this.player.nickname}`);
-    this.log(`   骰点=${enemyRoll}, 护甲=${playerArmor}, 实际伤害=${result.damage}`);
+    this.log(`   骰点=${enemyRoll}, 基础伤害=${outcome.damage}, 护甲=${playerArmor}, 扣血=${result.hpDamage}`);
+    for (const message of outcome.skillMessages) {
+      this.log(`   ${message}`);
+    }
     if (result.shieldBlocked > 0) {
       this.log(`   🛡️ 护盾抵挡了 ${result.shieldBlocked} 点`);
     }
@@ -273,6 +304,50 @@ export class BattlePrototype extends Component {
   /** 重置战斗 */
   private onResetClick(): void {
     this.initBattle();
+  }
+
+  private bindMissingProperties(): void {
+    this.playerNameLabel ??= this.findComponent('PlayerNameLabel', Label);
+    this.enemyNameLabel ??= this.findComponent('EnemyNameLabel', Label);
+    this.playerHpLabel ??= this.findComponent('PlayerHpLabel', Label);
+    this.enemyHpLabel ??= this.findComponent('EnemyHpLabel', Label);
+    this.diceResultLabel ??= this.findComponent('DiceResultLabel', Label);
+    this.logLabel ??= this.findComponent('LogLabel', Label);
+    this.rollButton ??= this.findComponent('RollButton', Button);
+    this.attackButton ??= this.findComponent('AttackButton', Button);
+    this.resetButton ??= this.findComponent('ResetButton', Button);
+  }
+
+  private findComponent<T extends Component>(nodeName: string, componentType: new () => T): T | null {
+    return this.node.getChildByName(nodeName)?.getComponent(componentType) ?? null;
+  }
+
+  private applyPrototypeLayout(): void {
+    this.setNodeLayout(this.playerNameLabel, -190, 260, 260, 36);
+    this.setNodeLayout(this.enemyNameLabel, 190, 260, 260, 36);
+    this.setNodeLayout(this.playerHpLabel, -190, 210, 260, 36);
+    this.setNodeLayout(this.enemyHpLabel, 190, 210, 260, 36);
+    this.setNodeLayout(this.diceResultLabel, 0, 115, 260, 58);
+    this.setNodeLayout(this.rollButton, -120, 20, 160, 50);
+    this.setNodeLayout(this.attackButton, 120, 20, 180, 50);
+    this.setNodeLayout(this.resetButton, 0, -65, 140, 46);
+    this.setNodeLayout(this.logLabel, 0, -300, 680, 360);
+
+    if (this.logLabel) {
+      this.logLabel.fontSize = 15;
+      this.logLabel.lineHeight = 20;
+      this.logLabel.overflow = Label.Overflow.SHRINK;
+      this.logLabel.enableWrapText = true;
+    }
+  }
+
+  private setNodeLayout(component: Component | null, x: number, y: number, width: number, height: number): void {
+    const node = component?.node;
+    if (!node) return;
+
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform);
+    transform?.setContentSize(width, height);
   }
 
   /** 刷新所有 UI 文本 */
