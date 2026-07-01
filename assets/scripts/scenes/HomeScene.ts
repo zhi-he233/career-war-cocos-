@@ -1,10 +1,12 @@
 import { _decorator, Button, Component, EditBox, Label, Node, UITransform, Vec3, director, sys } from 'cc';
 import type { GameMode, Room, RoomListItem } from '../shared/types';
 import { GameManager } from '../core/GameManager';
+import { ServerActions } from '../core/ServerActions';
 
 const { ccclass, property } = _decorator;
 const CLIENT_ID_KEY = 'career-war-cocos-client-id';
 const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
+const LAST_PLAYER_ID_KEY = 'career-war-cocos-player-id';
 
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -35,6 +37,7 @@ export class HomeScene extends Component {
   roomListNode: Node | null = null;
 
   private gameManager: GameManager | null = null;
+  private serverActions!: ServerActions;
   private roomList: RoomListItem[] = [];
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -42,12 +45,14 @@ export class HomeScene extends Component {
     this.ensureMinimalUi();
     this.clientId = this.getClientId();
     this.gameManager = GameManager.getInstance();
+    this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.setLocalPlayer(this.clientId, this.nickname);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.joinRoomButton?.node.on(Button.EventType.CLICK, this.joinRoom, this);
     this.refreshRoomsButton?.node.on(Button.EventType.CLICK, this.requestRoomList, this);
     this.renderStatus(this.gameManager.getStatus());
     this.renderRoomList();
+    this.tryAutoResume();
   }
 
   onDestroy(): void {
@@ -81,17 +86,11 @@ export class HomeScene extends Component {
 
     this.gameManager?.setLocalPlayer(this.clientId, this.nickname);
     this.gameManager?.connect(this.serverUrl);
-    this.gameManager?.emitAck(
-      'joinRoom',
-      {
-        nickname: this.nickname,
-        clientId: this.clientId,
-        roomId,
-      },
+    this.serverActions.joinRoom(
+      { nickname: this.nickname, clientId: this.clientId, roomId },
       (response: Ack<{ roomId: string; playerId: string; room: Room }>) => {
         if (response?.ok && response.room) {
           sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id);
-          this.gameManager?.applyRoomUpdate(response.room);
         }
       }
     );
@@ -99,11 +98,36 @@ export class HomeScene extends Component {
 
   requestRoomList(): void {
     this.gameManager?.connect(this.serverUrl);
-    this.gameManager?.emitAck('requestRoomList', {}, (response: Ack<{ roomList: RoomListItem[] }>) => {
+    this.serverActions.requestRoomList((response: Ack<{ roomList: RoomListItem[] }>) => {
       if (!response?.ok) return;
       this.roomList = response.roomList ?? [];
       this.renderRoomList();
     });
+  }
+
+  /** Try to resume a previously saved room on startup. */
+  private tryAutoResume(): void {
+    const savedRoomId = sys.localStorage.getItem(LAST_ROOM_ID_KEY);
+    if (!savedRoomId) return;
+
+    const savedPlayerId = sys.localStorage.getItem(LAST_PLAYER_ID_KEY) ?? '';
+    this.gameManager?.setLocalPlayerId(savedPlayerId);
+    this.gameManager?.connect(this.serverUrl);
+    this.serverActions.resumeRoom(
+      { roomId: savedRoomId, clientId: this.clientId, playerId: savedPlayerId || undefined },
+      (response: Ack<{ roomId: string; playerId: string; room: Room }>) => {
+        if (!response?.ok || !response.room) {
+          sys.localStorage.removeItem(LAST_ROOM_ID_KEY);
+          sys.localStorage.removeItem(LAST_PLAYER_ID_KEY);
+          this.gameManager?.setLocalPlayerId('');
+          return;
+        }
+        sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.roomId);
+        if (response.playerId) {
+          this.gameManager?.setLocalPlayerId(response.playerId);
+        }
+      }
+    );
   }
 
   private joinRoomById(roomId: string): void {
@@ -116,17 +140,11 @@ export class HomeScene extends Component {
   private createRoom(gameMode: GameMode): void {
     this.gameManager?.setLocalPlayer(this.clientId, this.nickname);
     this.gameManager?.connect(this.serverUrl);
-    this.gameManager?.emitAck(
-      'createRoom',
-      {
-        nickname: this.nickname,
-        clientId: this.clientId,
-        gameMode,
-      },
+    this.serverActions.createRoom(
+      { nickname: this.nickname, clientId: this.clientId, gameMode },
       (response: Ack<{ room: Room }>) => {
         if (response?.ok && response.room) {
           sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id);
-          this.gameManager?.applyRoomUpdate(response.room);
         }
       }
     );

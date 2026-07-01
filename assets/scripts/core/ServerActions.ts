@@ -1,4 +1,4 @@
-import type { CharacterId, GameMode, RoomSettings, SummonerSkillId } from '../shared/types';
+import type { CharacterId, GameMode, RollActionType, RollDecisionChoice, RoomSettings, SummonerSkillId } from '../shared/types';
 import { GameManager } from './GameManager';
 
 export class ServerActions {
@@ -10,6 +10,14 @@ export class ServerActions {
 
   joinRoom(payload: { nickname: string; roomId: string; clientId: string; playerId?: string; gameMode?: GameMode }, callback?: (response: unknown) => void): void {
     this.gameManager.emitAck('joinRoom', payload, callback);
+  }
+
+  resumeRoom(payload: { roomId: string; clientId: string; playerId?: string }, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('resumeRoom', payload, callback);
+  }
+
+  leaveRoom(callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('leaveRoom', {}, callback);
   }
 
   requestRoomList(callback?: (response: unknown) => void): void {
@@ -32,8 +40,8 @@ export class ServerActions {
     this.gameManager.emitAck('startGame', {});
   }
 
-  selectTarget(targetId: string): void {
-    this.gameManager.emitAck('selectTarget', { targetId });
+  selectTarget(targetId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('selectTarget', { targetId }, callback);
   }
 
   selectActor(actorId: string): void {
@@ -42,6 +50,19 @@ export class ServerActions {
 
   rollDice(): void {
     this.gameManager.emitAck('rollDice', {});
+  }
+
+  confirmRollDecision(payload: {
+    roomId: string;
+    pendingDecisionId: string;
+    decisionId: string;
+    actionType: RollActionType;
+    choice: RollDecisionChoice;
+    skillId?: string;
+    summonerSkillId?: SummonerSkillId;
+    selfDamageAmount?: number;
+  }, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('confirmRollDecision', payload, callback);
   }
 
   chooseRogueliteReward(rewardId: string): void {
@@ -66,5 +87,29 @@ export class ServerActions {
 
   leaveRogueliteRoom(): void {
     this.gameManager.emitAck('leaveRogueliteRoom', {});
+  }
+
+  kickPlayer(playerId: string): void {
+    this.gameManager.emitAck('kickPlayer', { playerId });
+  }
+
+  rollGuardCheck(): void {
+    this.gameManager.emitAck('rollGuardCheck', {});
+  }
+
+  readyForRematch(): void {
+    this.gameManager.emitAck('readyForRematch', {});
+  }
+
+  sendEmote(emoteId: string): void {
+    this.gameManager.emitAck('sendEmote', { emoteId });
+  }
+
+  chooseDuoSlotCharacter(slotIndex: 0 | 1, characterId: CharacterId): void {
+    this.gameManager.emitAck('chooseDuoSlotCharacter', { slotIndex, characterId });
+  }
+
+  chooseDuoSlotSummonerSkill(slotIndex: 0 | 1, summonerSkillId: SummonerSkillId): void {
+    this.gameManager.emitAck('chooseDuoSlotSummonerSkill', { slotIndex, summonerSkillId });
   }
 }

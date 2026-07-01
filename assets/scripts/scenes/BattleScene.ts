@@ -1,7 +1,9 @@
 import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../core/GameManager';
+import { ServerActions } from '../core/ServerActions';
 import { characterName, summonerSkillName } from '../core/DisplayText';
-import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room } from '../shared/types';
+import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents } from '../helpers/BattlePlayerHelpers';
+import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -29,6 +31,7 @@ export class BattleScene extends Component {
   rollButton: Button | null = null;
 
   private gameManager: GameManager | null = null;
+  private serverActions!: ServerActions;
   private room: Room | null = null;
   private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
@@ -37,6 +40,7 @@ export class BattleScene extends Component {
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
+    this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.on(Button.EventType.CLICK, this.rollDice, this);
@@ -161,7 +165,7 @@ export class BattleScene extends Component {
 
   private selectTarget(targetId: string): void {
     if (!this.room || !this.canLocalAct(this.room)) return;
-    this.gameManager?.emitAck('selectTarget', { targetId });
+    this.serverActions.selectTarget(targetId);
   }
 
   private rollDice(): void {
@@ -175,28 +179,27 @@ export class BattleScene extends Component {
 
     if (!target) return;
 
-    const emitRoll = () => this.gameManager?.emitAck('rollDice', {});
+    const emitRoll = () => this.serverActions.rollDice();
     if (actor.selectedTargetId === target.id) {
       emitRoll();
       return;
     }
 
-    this.gameManager?.emitAck('selectTarget', { targetId: target.id }, () => emitRoll());
+    this.serverActions.selectTarget(target.id, () => emitRoll());
   }
 
   private confirmAction(actionType: RollActionType, action?: RollDecisionAvailableAction): void {
     const decision = this.room?.pendingRollDecision;
     if (!this.room || !decision || !this.canResolveDecision(this.room)) return;
 
-    const choice: RollDecisionChoice = actionType;
-    this.gameManager?.emitAck('confirmRollDecision', {
+    this.serverActions.confirmRollDecision({
       roomId: this.room.id,
       pendingDecisionId: decision.id,
       decisionId: decision.id,
       actionType,
-      choice,
+      choice: actionType as RollDecisionChoice,
       skillId: action?.skillId,
-      summonerSkillId: actionType === 'summoner_skill' ? action?.skillId : undefined,
+      summonerSkillId: actionType === 'summoner_skill' ? action?.skillId as SummonerSkillId : undefined,
       selfDamageAmount: action?.requiresSelfDamageAmount ? 1 : undefined,
     });
   }
@@ -211,34 +214,19 @@ export class BattleScene extends Component {
   }
 
   private canLocalAct(room: Room): boolean {
-    const actor = this.getActor(room);
-    return this.canLocalControlPlayer(actor);
+    return canLocalAct(room, this.gameManager?.localClientId ?? '');
   }
 
   private canResolveDecision(room: Room): boolean {
-    const actorId = room.pendingRollDecision?.actorId;
-    const actor = actorId ? room.players.find((player) => player.id === actorId) : null;
-    return this.canLocalControlPlayer(actor ?? null);
-  }
-
-  private canLocalControlPlayer(player: Player | null): boolean {
-    const localClientId = this.gameManager?.localClientId;
-    if (!player || player.isDead || player.isBot || !localClientId) return false;
-    return player.clientId === localClientId || player.controllerId === localClientId;
+    return canResolveDecision(room, this.gameManager?.localClientId ?? '');
   }
 
   private canTarget(actor: Player, target: Player): boolean {
-    if (target.id === actor.id || target.isDead) return false;
-    if (actor.teamId && target.teamId) return actor.teamId !== target.teamId;
-    return true;
+    return canTarget(actor, target);
   }
 
   private getActor(room: Room): Player | null {
-    if (room.selectedActorId) {
-      const selected = room.players.find((player) => player.id === room.selectedActorId);
-      if (selected) return selected;
-    }
-    return room.players[room.activePlayerIndex] ?? null;
+    return getActor(room);
   }
 
   private getPlayerName(playerId: string | undefined): string {
@@ -252,9 +240,7 @@ export class BattleScene extends Component {
   }
 
   private latestEvents(room: Room, limit = room.battleLog.length): Room['battleLog'] {
-    return [...room.battleLog]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, limit);
+    return latestEvents(room, limit);
   }
 
   private ensureMinimalUi(): void {

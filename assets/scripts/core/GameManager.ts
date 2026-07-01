@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, director } from 'cc';
+import { _decorator, Component, Node, director, sys } from 'cc';
 import type { Room, RoomPhase } from '../shared/types';
 import { NetworkManager } from '../network/NetworkManager';
 import { GameEvents } from './GameEvents';
@@ -34,6 +34,7 @@ export class GameManager extends Component {
 
   room: Room | null = null;
   localClientId = '';
+  localPlayerId = '';
   localNickname = '';
   statusText = 'Idle';
 
@@ -137,6 +138,13 @@ export class GameManager extends Component {
     this.localNickname = nickname;
   }
 
+  setLocalPlayerId(playerId: string): void {
+    this.localPlayerId = playerId;
+    if (playerId) {
+      sys.localStorage.setItem('career-war-cocos-player-id', playerId);
+    }
+  }
+
   getLocalPlayer(): Room['players'][number] | null {
     if (!this.room || !this.localClientId) return null;
     return this.room.players.find((player) => player.clientId === this.localClientId) ?? null;
@@ -173,13 +181,14 @@ export class GameManager extends Component {
 
   private handleAckResponse(event: string, response: unknown): void {
     if (!response || typeof response !== 'object') return;
-    const ack = response as { ok?: boolean; error?: unknown; room?: Room };
+    const ack = response as { ok?: boolean; error?: unknown; room?: Room; playerId?: string };
     if (ack.ok === false) {
       this.setStatus(`${event} failed: ${this.errorMessage(ack.error)}`);
       return;
     }
     if (ack.ok === true) {
       this.setStatus(`${event} ok`);
+      if (ack.playerId) this.setLocalPlayerId(ack.playerId);
       if (ack.room) this.applyRoomUpdate(ack.room);
     }
   }

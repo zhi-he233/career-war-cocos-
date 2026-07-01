@@ -1,5 +1,6 @@
 import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../core/GameManager';
+import { ServerActions } from '../core/ServerActions';
 import { SUMMONER_SKILL_IDS, characterName, summonerSkillName } from '../core/DisplayText';
 import { characterList } from '../shared/characters';
 import type { Character, CharacterId, Room, SummonerSkillId } from '../shared/types';
@@ -27,6 +28,7 @@ export class LobbyScene extends Component {
   startGameButton: Button | null = null;
 
   private gameManager: GameManager | null = null;
+  private serverActions!: ServerActions;
   private room: Room | null = null;
   private selectedCharacterId: CharacterId = 'boxer';
   private selectedSummonerSkillId: SummonerSkillId = 'lucky_plus_one';
@@ -37,6 +39,7 @@ export class LobbyScene extends Component {
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
+    this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.startGameButton?.node.on(Button.EventType.CLICK, this.startGame, this);
@@ -54,30 +57,30 @@ export class LobbyScene extends Component {
 
   chooseCharacter(characterId: CharacterId): void {
     this.selectedCharacterId = characterId;
-    this.gameManager?.emitAck('chooseCharacter', { characterId });
-    this.gameManager?.emitAck('chooseSummonerSkill', { summonerSkillId: this.selectedSummonerSkillId });
+    this.serverActions.chooseCharacter(characterId);
+    this.serverActions.chooseSummonerSkill(this.selectedSummonerSkillId);
   }
 
   chooseSummonerSkill(summonerSkillId: SummonerSkillId): void {
     this.selectedSummonerSkillId = summonerSkillId;
-    this.gameManager?.emitAck('chooseSummonerSkill', { summonerSkillId });
+    this.serverActions.chooseSummonerSkill(summonerSkillId);
   }
 
   startGame(): void {
     const me = this.getMe();
     if (!me?.characterId) {
       this.chooseCharacter(this.selectedCharacterId);
-      this.scheduleOnce(() => this.gameManager?.emitAck('startGame', {}), 0.25);
+      this.scheduleOnce(() => this.serverActions.startGame(), 0.25);
       return;
     }
 
     if (!me.summonerSkillId) {
       this.chooseSummonerSkill(this.selectedSummonerSkillId);
-      this.scheduleOnce(() => this.gameManager?.emitAck('startGame', {}), 0.15);
+      this.scheduleOnce(() => this.serverActions.startGame(), 0.15);
       return;
     }
 
-    this.gameManager?.emitAck('startGame', {});
+    this.serverActions.startGame();
   }
 
   private render(room: Room): void {

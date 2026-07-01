@@ -1,5 +1,6 @@
 import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../core/GameManager';
+import { ServerActions } from '../core/ServerActions';
 import { titleFromId } from '../core/DisplayText';
 import { getRogueliteConnectedNodeIds, getRogueliteMapNodeId, createRogueliteMapLayer } from '../shared/data/rogueliteMapRules';
 import { getRogueliteShopItemsForStage, ROGUELITE_SHOP_RULES } from '../shared/data/rogueliteShop';
@@ -24,6 +25,7 @@ export class RogueliteScene extends Component {
   logLabel: Label | null = null;
 
   private gameManager: GameManager | null = null;
+  private serverActions!: ServerActions;
   private room: Room | null = null;
   private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
@@ -32,6 +34,7 @@ export class RogueliteScene extends Component {
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
+    this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     const room = this.gameManager.getRoom();
@@ -98,7 +101,7 @@ export class RogueliteScene extends Component {
           17,
           this.actionListNode!
         );
-        button.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('chooseRogueliteReward', { rewardId: reward.id }), this);
+        button.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteReward(reward.id), this);
       });
       return;
     }
@@ -122,7 +125,7 @@ export class RogueliteScene extends Component {
           17,
           this.actionListNode!
         );
-        button.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('chooseRogueliteEventOption', { choiceId: choice.id }), this);
+        button.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteEventOption(choice.id), this);
       });
       return;
     }
@@ -140,10 +143,10 @@ export class RogueliteScene extends Component {
           16,
           this.actionListNode!
         );
-        button.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('buyRogueliteShopItem', { itemId: item.id }), this);
+        button.node.on(Button.EventType.CLICK, () => this.serverActions.buyRogueliteShopItem(item.id), this);
       });
       const leave = this.createButton('LeaveShop', 'Leave Shop', 0, -180, 260, 54, 20, this.actionListNode);
-      leave.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('leaveRogueliteRoom', {}), this);
+      leave.node.on(Button.EventType.CLICK, () => this.serverActions.leaveRogueliteRoom(), this);
       return;
     }
 
@@ -159,7 +162,7 @@ export class RogueliteScene extends Component {
           17,
           this.actionListNode!
         );
-        button.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('useRogueliteRestAction', { actionId: action.id }), this);
+        button.node.on(Button.EventType.CLICK, () => this.serverActions.useRogueliteRestAction(action.id), this);
       });
       return;
     }
@@ -180,7 +183,7 @@ export class RogueliteScene extends Component {
         button.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
       });
       const finish = this.createButton('FinishRun', 'Finish Run', 0, -170, 260, 54, 20, this.actionListNode);
-      finish.node.on(Button.EventType.CLICK, () => this.gameManager?.emitAck('chooseRogueliteContinue', { choice: 'finish' }), this);
+      finish.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteContinue('finish'), this);
       return;
     }
 
@@ -188,10 +191,7 @@ export class RogueliteScene extends Component {
   }
 
   private continueRoguelite(mapNode: RogueliteMapNodeSelection): void {
-    this.gameManager?.emitAck('chooseRogueliteContinue', {
-      choice: 'continue',
-      mapNode,
-    });
+    this.serverActions.chooseRogueliteContinue('continue', mapNode);
   }
 
   private renderStatus(status: string): void {
