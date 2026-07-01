@@ -1,0 +1,10 @@
+{
+  "name": "career-war-cocos",
+  "uuid": "cd684005-3bde-4ca3-a3df-67a9066d6fed",
+  "creator": {
+    "version": "3.8.8"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.0"
+  }
+}
