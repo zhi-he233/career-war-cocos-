@@ -58,7 +58,6 @@ export class LobbyScene extends Component {
   chooseCharacter(characterId: CharacterId): void {
     this.selectedCharacterId = characterId;
     this.serverActions.chooseCharacter(characterId);
-    this.serverActions.chooseSummonerSkill(this.selectedSummonerSkillId);
   }
 
   chooseSummonerSkill(summonerSkillId: SummonerSkillId): void {

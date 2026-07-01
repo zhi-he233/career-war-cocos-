@@ -1,5 +1,6 @@
 import { _decorator, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../../core/GameManager';
+import { latestEvents } from '../../helpers/BattlePlayerHelpers';
 import type { Room } from '../../shared/types';
 
 const { ccclass, property } = _decorator;
@@ -29,11 +30,8 @@ export class BattleLog extends Component {
 
   private render(room: Room): void {
     if (!this.logLabel) return;
-    this.logLabel.string = room.battleLog
-      .slice()
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, this.maxLines)
-      .map((event) => event.message)
+    this.logLabel.string = latestEvents(room, this.maxLines)
+      .map(e => e.message)
       .join('\n');
   }
 

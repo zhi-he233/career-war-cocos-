@@ -1,8 +1,9 @@
-import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, UITransform, Vec3, tween, UIOpacity } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { characterName, summonerSkillName } from '../core/DisplayText';
-import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents } from '../helpers/BattlePlayerHelpers';
+import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents, diffFloatingEffects } from '../helpers/BattlePlayerHelpers';
+import { DicePanel } from '../ui/battle/DicePanel';
 import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
@@ -30,9 +31,13 @@ export class BattleScene extends Component {
   @property({ type: Button })
   rollButton: Button | null = null;
 
+  @property({ type: DicePanel })
+  dicePanel: DicePanel | null = null;
+
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
   private room: Room | null = null;
+  private prevRoom: Room | null = null;
   private statusText = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
@@ -57,7 +62,19 @@ export class BattleScene extends Component {
   }
 
   private render(room: Room): void {
+    // Floating damage/heal effects
+    const effects = diffFloatingEffects(this.prevRoom, room);
+    for (const fx of effects) {
+      this.spawnFloatingEffect(fx.playerId, fx.value, fx.type);
+    }
+    this.prevRoom = room;
     this.room = room;
+
+    // Drive DicePanel display + animation
+    if (this.dicePanel) {
+      this.dicePanel.render(room);
+    }
+
     const actor = this.getActor(room);
     const decision = room.pendingRollDecision;
 
@@ -178,6 +195,9 @@ export class BattleScene extends Component {
       : room.players.find((player) => this.canTarget(actor, player));
 
     if (!target) return;
+
+    // Start dice roll animation
+    this.dicePanel?.startRoll(room.pendingGuardCheck ? 'guard' : 'normal');
 
     const emitRoll = () => this.serverActions.rollDice();
     if (actor.selectedTargetId === target.id) {
@@ -300,5 +320,42 @@ export class BattleScene extends Component {
     for (const child of [...node.children]) {
       child.destroy();
     }
+  }
+
+  /** Spawn a floating damage/heal/block number that tweens up and fades out. */
+  private spawnFloatingEffect(playerId: string, value: number, type: 'damage' | 'heal' | 'block'): void {
+    const labelNode = new Node(`Float_${type}_${value}_${Date.now()}`);
+    this.node.addChild(labelNode);
+
+    // Position near the center of the screen (above the battle area)
+    const playerIdx = this.room?.players.findIndex(p => p.id === playerId) ?? -1;
+    const x = playerIdx >= 0 ? (playerIdx - (this.room?.players.length ?? 1) / 2 + 0.5) * 180 : 0;
+    labelNode.setPosition(new Vec3(x, 80, 0));
+
+    const transform = labelNode.addComponent(UITransform);
+    transform.setContentSize(120, 40);
+
+    const label = labelNode.addComponent(Label);
+    label.fontSize = type === 'damage' && value >= 8 ? 36 : 28;
+    label.lineHeight = 36;
+    label.enableWrapText = false;
+    label.color = type === 'damage'
+      ? new Color(255, 68, 68, 255)
+      : type === 'heal'
+        ? new Color(68, 255, 68, 255)
+        : new Color(255, 170, 68, 255);
+    label.string = type === 'damage' ? `-${value}` : type === 'heal' ? `+${value}` : `Block`;
+
+    const opacity = labelNode.addComponent(UIOpacity);
+    opacity.opacity = 255;
+
+    tween(labelNode)
+      .by(1.2, { position: new Vec3(0, 80, 0) })
+      .start();
+    tween(opacity)
+      .delay(0.5)
+      .to(0.7, { opacity: 0 })
+      .call(() => labelNode.destroy())
+      .start();
   }
 }
