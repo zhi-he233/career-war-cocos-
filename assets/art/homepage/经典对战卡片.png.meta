@@ -1,0 +1,134 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "7d646e26-2cb9-44f0-8826-79f15699db60",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "7d646e26-2cb9-44f0-8826-79f15699db60@6c48a",
+      "displayName": "经典对战卡片",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "imageUuidOrDatabaseUri": "7d646e26-2cb9-44f0-8826-79f15699db60",
+        "isUuid": true,
+        "visible": false,
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "7d646e26-2cb9-44f0-8826-79f15699db60@f9941",
+      "displayName": "经典对战卡片",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": -1,
+        "offsetY": 13.5,
+        "trimX": 88,
+        "trimY": 89,
+        "width": 896,
+        "height": 1259,
+        "rawWidth": 1074,
+        "rawHeight": 1464,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": true,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "vertices": {
+          "rawPosition": [
+            -448,
+            -629.5,
+            0,
+            448,
+            -629.5,
+            0,
+            -448,
+            629.5,
+            0,
+            448,
+            629.5,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            88,
+            1375,
+            984,
+            1375,
+            88,
+            116,
+            984,
+            116
+          ],
+          "nuv": [
+            0.08193668528864059,
+            0.07923497267759563,
+            0.9162011173184358,
+            0.07923497267759563,
+            0.08193668528864059,
+            0.9392076502732241,
+            0.9162011173184358,
+            0.9392076502732241
+          ],
+          "minPos": [
+            -448,
+            -629.5,
+            0
+          ],
+          "maxPos": [
+            448,
+            629.5,
+            0
+          ]
+        },
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "7d646e26-2cb9-44f0-8826-79f15699db60@6c48a",
+        "atlasUuid": "",
+        "trimType": "auto"
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "7d646e26-2cb9-44f0-8826-79f15699db60@6c48a"
+  }
+}

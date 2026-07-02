@@ -1,4 +1,20 @@
-import { _decorator, Button, Component, EditBox, Label, Node, UITransform, Vec3, director, sys } from 'cc';
+import {
+  _decorator,
+  Button,
+  Color,
+  Component,
+  EditBox,
+  Graphics,
+  Label,
+  Node,
+  Sprite,
+  SpriteFrame,
+  tween,
+  UITransform,
+  Vec3,
+  director,
+  sys,
+} from 'cc';
 import type { GameMode, Room, RoomListItem } from '../shared/types';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
@@ -9,6 +25,7 @@ const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 const LAST_PLAYER_ID_KEY = 'career-war-cocos-player-id';
 
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
+type SceneName = 'Lobby' | 'Battle' | 'Roguelite';
 
 @ccclass('HomeScene')
 export class HomeScene extends Component {
@@ -36,13 +53,31 @@ export class HomeScene extends Component {
   @property({ type: Node })
   roomListNode: Node | null = null;
 
+  @property
+  createDebugUi = false;
+
+  @property({ type: [SpriteFrame] })
+  diceRollFrames: SpriteFrame[] = [];
+
+  @property
+  diceRollDuration = 0.72;
+
+  @property
+  fallbackSceneDelay = 0.8;
+
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
   private roomList: RoomListItem[] = [];
+  private infoPanelNode: Node | null = null;
+  private toastNode: Node | null = null;
+  private isLaunchingRoguelite = false;
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
-    this.ensureMinimalUi();
+    if (this.createDebugUi) {
+      this.ensureMinimalUi();
+    }
+
     this.clientId = this.getClientId();
     this.gameManager = GameManager.getInstance();
     this.serverActions = new ServerActions(this.gameManager);
@@ -62,15 +97,55 @@ export class HomeScene extends Component {
   }
 
   createClassicRoom(): void {
-    this.createRoom('classic');
+    this.launchMode('classic', 'Lobby');
   }
 
   createPveRoom(): void {
-    this.createRoom('pve_1v1');
+    this.launchMode('pve_1v1', 'Lobby');
   }
 
   createRogueliteRoom(): void {
-    this.createRoom('pve_roguelite');
+    if (this.isLaunchingRoguelite) return;
+    this.isLaunchingRoguelite = true;
+    this.playDiceRoll(() => {
+      this.isLaunchingRoguelite = false;
+      this.launchMode('pve_roguelite', 'Roguelite');
+    });
+  }
+
+  openRuleGuide(): void {
+    this.showInfoPanel(
+      '规则书',
+      [
+        '基础流程：选择模式，进入房间，选择角色，然后开始战斗。',
+        '战斗规则：轮到你时投骰，根据骰点选择普通攻击、角色技能或召唤师技能。',
+        '结算原则：服务器负责真实结算，客户端只负责显示和发送操作。',
+        '肉鸽模式：打完一场后选择奖励，再进入下一层。',
+      ].join('\n')
+    );
+  }
+
+  openProfile(): void {
+    this.showInfoPanel(
+      '玩家档案',
+      [
+        `昵称：${this.nickname}`,
+        '当前版本先保留入口和弹窗。',
+        '下一步可以做正式档案页：胜场、常用角色、肉鸽进度、收藏徽章。',
+      ].join('\n')
+    );
+  }
+
+  tapCandle(): void {
+    this.tapProp('CandleProp', '烛火晃了一下。');
+  }
+
+  tapMug(): void {
+    this.tapProp('MugProp', '杯子被轻轻碰了一下。');
+  }
+
+  tapCoinPouch(): void {
+    this.tapProp('CoinPouchProp', '钱袋发出一声轻响。');
   }
 
   openLobbyScene(): void {
@@ -105,7 +180,6 @@ export class HomeScene extends Component {
     });
   }
 
-  /** Try to resume a previously saved room on startup. */
   private tryAutoResume(): void {
     const savedRoomId = sys.localStorage.getItem(LAST_ROOM_ID_KEY);
     if (!savedRoomId) return;
@@ -137,7 +211,7 @@ export class HomeScene extends Component {
     this.joinRoom();
   }
 
-  private createRoom(gameMode: GameMode): void {
+  private createRoom(gameMode: GameMode, callback?: (ok: boolean, room?: Room) => void): void {
     this.gameManager?.setLocalPlayer(this.clientId, this.nickname);
     this.gameManager?.connect(this.serverUrl);
     this.serverActions.createRoom(
@@ -145,15 +219,169 @@ export class HomeScene extends Component {
       (response: Ack<{ room: Room }>) => {
         if (response?.ok && response.room) {
           sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id);
+          callback?.(true, response.room);
+          return;
         }
+        callback?.(false);
       }
     );
+  }
+
+  private launchMode(gameMode: GameMode, fallbackScene: SceneName): void {
+    let receivedAck = false;
+    this.showToast(gameMode === 'pve_roguelite' ? '进入肉鸽模式...' : '创建房间...');
+
+    this.createRoom(gameMode, (ok, room) => {
+      receivedAck = true;
+      if (!ok) {
+        this.showToast('服务器暂时没有响应，先进入界面预览。');
+        this.loadScene(fallbackScene);
+        return;
+      }
+      this.loadScene(this.sceneForRoom(room, fallbackScene));
+    });
+
+    this.scheduleOnce(() => {
+      if (receivedAck || director.getScene()?.name !== 'Home') return;
+      this.showToast('服务器连接中，先进入界面预览。');
+      this.loadScene(fallbackScene);
+    }, this.fallbackSceneDelay);
+  }
+
+  private sceneForRoom(room: Room | undefined, fallbackScene: SceneName): SceneName {
+    if (!room) return fallbackScene;
+    if (room.phase === 'battle' || room.phase === 'gameOver') return 'Battle';
+    if (
+      room.phase === 'reward' ||
+      room.phase === 'roguelite_event' ||
+      room.phase === 'roguelite_shop' ||
+      room.phase === 'roguelite_rest' ||
+      room.phase === 'roguelite_continue'
+    ) {
+      return 'Roguelite';
+    }
+    return 'Lobby';
+  }
+
+  private loadScene(sceneName: SceneName): void {
+    if (director.getScene()?.name === sceneName) return;
+    director.loadScene(sceneName);
+  }
+
+  private playDiceRoll(done: () => void): void {
+    const diceNode = this.node.getChildByName('RogueliteButton');
+    const sprite = diceNode?.getComponent(Sprite) ?? null;
+    const frames = this.diceRollFrames.filter(Boolean);
+
+    if (!sprite || frames.length === 0) {
+      this.scheduleOnce(done, 0.2);
+      return;
+    }
+
+    const originalFrame = sprite.spriteFrame;
+    const interval = 0.06;
+    const repeat = Math.max(1, Math.floor(this.diceRollDuration / interval));
+    let index = 0;
+
+    const tick = () => {
+      sprite.spriteFrame = frames[index % frames.length];
+      index += 1;
+    };
+
+    this.schedule(tick, interval, repeat, 0);
+    this.scheduleOnce(() => {
+      this.unschedule(tick);
+      sprite.spriteFrame = frames[Math.floor(Math.random() * frames.length)] ?? originalFrame;
+      done();
+    }, this.diceRollDuration);
+  }
+
+  private tapProp(nodeName: string, message: string): void {
+    const node = this.node.getChildByName(nodeName);
+    if (!node) return;
+
+    const originalPosition = node.position.clone();
+    tween(node)
+      .to(0.08, { position: new Vec3(originalPosition.x, originalPosition.y + 8, originalPosition.z) })
+      .to(0.12, { position: originalPosition })
+      .start();
+    this.showToast(message);
   }
 
   private renderStatus(status: string): void {
     if (this.statusLabel) {
       this.statusLabel.string = `Server: ${this.serverUrl}\nPlayer: ${this.nickname}\n${status}`;
     }
+  }
+
+  private showInfoPanel(title: string, body: string): void {
+    this.infoPanelNode?.destroy();
+
+    const panel = this.ensureNode('HomeInfoPanel', 0, 0, 620, 520);
+    this.infoPanelNode = panel;
+    panel.setSiblingIndex(this.node.children.length - 1);
+
+    const graphics = panel.getComponent(Graphics) ?? panel.addComponent(Graphics);
+    graphics.clear();
+    graphics.fillColor = new Color(38, 22, 10, 238);
+    graphics.strokeColor = new Color(211, 157, 78, 255);
+    graphics.lineWidth = 4;
+    graphics.roundRect(-310, -260, 620, 520, 18);
+    graphics.fill();
+    graphics.stroke();
+
+    const titleLabel = this.ensureLabelInParent('TitleLabel', 0, 185, 560, 58, 30, panel);
+    titleLabel.string = title;
+    titleLabel.color = new Color(255, 225, 155, 255);
+
+    const bodyLabel = this.ensureLabelInParent('BodyLabel', 0, 25, 540, 260, 22, panel);
+    bodyLabel.string = body;
+    bodyLabel.color = new Color(255, 240, 204, 255);
+
+    const closeButton = this.createButtonInParent('CloseInfoButton', '关闭', 0, -185, 220, 56, 24, panel);
+    closeButton.node.on(Button.EventType.CLICK, this.closeInfoPanel, this);
+
+    const buttonGraphics = closeButton.node.getComponent(Graphics) ?? closeButton.node.addComponent(Graphics);
+    buttonGraphics.clear();
+    buttonGraphics.fillColor = new Color(132, 77, 31, 255);
+    buttonGraphics.strokeColor = new Color(255, 219, 142, 255);
+    buttonGraphics.lineWidth = 3;
+    buttonGraphics.roundRect(-110, -28, 220, 56, 12);
+    buttonGraphics.fill();
+    buttonGraphics.stroke();
+  }
+
+  private closeInfoPanel(): void {
+    this.infoPanelNode?.destroy();
+    this.infoPanelNode = null;
+  }
+
+  private showToast(message: string): void {
+    this.toastNode?.destroy();
+
+    const toast = this.ensureNode('HomeToast', 0, -560, 520, 48);
+    this.toastNode = toast;
+    toast.setSiblingIndex(this.node.children.length - 1);
+
+    const graphics = toast.getComponent(Graphics) ?? toast.addComponent(Graphics);
+    graphics.clear();
+    graphics.fillColor = new Color(36, 21, 10, 220);
+    graphics.strokeColor = new Color(221, 166, 82, 230);
+    graphics.lineWidth = 2;
+    graphics.roundRect(-260, -24, 520, 48, 12);
+    graphics.fill();
+    graphics.stroke();
+
+    const label = this.ensureLabelInParent('ToastLabel', 0, 0, 500, 38, 18, toast);
+    label.string = message;
+    label.color = new Color(255, 232, 183, 255);
+
+    this.scheduleOnce(() => {
+      if (this.toastNode === toast) {
+        toast.destroy();
+        this.toastNode = null;
+      }
+    }, 1.2);
   }
 
   private ensureMinimalUi(): void {
@@ -276,6 +504,7 @@ export class HomeScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 6;
     label.enableWrapText = false;
+    label.color = new Color(255, 238, 196, 255);
     return label;
   }
 
