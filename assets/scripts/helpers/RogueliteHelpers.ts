@@ -29,9 +29,9 @@ const ROGUELITE_GROWTH_DISPLAY_DRAFTS = [
   ...ROGUELITE_GROWTH_REWARDS,
   ...ROGUELITE_STARTER_REWARDS,
 ];
-const GROWTH_REWARD_TYPES = new Set(ROGUELITE_GROWTH_DISPLAY_DRAFTS.map(r => r.type));
-const BOSS_REWARD_TYPES = new Set(ROGUELITE_BOSS_ABILITY_REWARDS.map(r => r.type));
-const SKILL_REWARD_TYPES = new Set(ROGUELITE_CHARACTER_SKILL_REWARDS.map(r => r.type));
+const GROWTH_REWARD_TYPES: Set<string> = new Set(ROGUELITE_GROWTH_DISPLAY_DRAFTS.map(r => r.type));
+const BOSS_REWARD_TYPES: Set<string> = new Set(ROGUELITE_BOSS_ABILITY_REWARDS.map(r => r.type));
+const SKILL_REWARD_TYPES: Set<string> = new Set(ROGUELITE_CHARACTER_SKILL_REWARDS.map(r => r.type));
 
 // ── Perk/Skill display lookup tables ──
 

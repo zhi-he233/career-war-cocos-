@@ -20,7 +20,6 @@ export class DicePanel extends Component {
 
   private animator = new DiceAnimator();
   private room: Room | null = null;
-  private _pendingResult: number | null = null;
 
   // ── Public API (called by BattleScene) ──
 
@@ -30,6 +29,10 @@ export class DicePanel extends Component {
   }
 
   // ── Cocos Lifecycle ──
+
+  onLoad(): void {
+    this.ensureMinimalUi();
+  }
 
   update(dt: number): void {
     this.animator.update(dt);

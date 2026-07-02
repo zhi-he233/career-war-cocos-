@@ -138,6 +138,7 @@ export interface RoguelitePanelVM {
     description?: string;
     skills: string[];
   };
+  enemyTraits?: string[];
   fatigue?: {
     battleRound: number;
     bonus: number;

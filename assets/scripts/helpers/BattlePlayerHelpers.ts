@@ -150,7 +150,7 @@ export function lastRollText(player: Player, room: Room): string {
   if (room.pendingRollDecision?.actorId === player.id) {
     return `Roll: ${room.pendingRollDecision.currentRoll}`;
   }
-  const rollEvent = room.battleLog.find(
+  const rollEvent = latestEvents(room).find(
     e => e.type === 'roll' && e.playerId === player.id && e.dice?.length
   );
   if (!rollEvent?.dice?.length) return '';

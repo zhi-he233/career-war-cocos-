@@ -98,9 +98,11 @@ export class NetworkManager extends Component {
       this.flushPendingEmits();
     });
     this.socket.on('disconnect', (reason) => {
+      this.connectStarted = false;
       this.node.emit(GameEvents.NetworkDisconnected, reason);
     });
     this.socket.on('connect_error', (error) => {
+      this.connectStarted = false;
       this.node.emit(GameEvents.NetworkError, error);
     });
 
