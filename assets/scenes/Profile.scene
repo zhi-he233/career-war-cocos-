@@ -1,7 +1,7 @@
 [
   {
     "__type__": "cc.SceneAsset",
-    "_name": "Lobby",
+    "_name": "Profile",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_native": "",
@@ -11,7 +11,7 @@
   },
   {
     "__type__": "cc.Scene",
-    "_name": "Lobby",
+    "_name": "Profile",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": null,
@@ -54,7 +54,7 @@
     "_globals": {
       "__id__": 9
     },
-    "_id": "c7bf427d-72d5-4b35-9971-ec03b6ebe9e2"
+    "_id": "8ac337e7-bf6c-4c9f-97b6-e6c9ebd2b78e"
   },
   {
     "__type__": "cc.Node",
@@ -124,7 +124,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "beI88Z2HpFELqR4T5EMHpg"
+    "_id": "Profile_36d3b392_4T5EMHpg"
   },
   {
     "__type__": "cc.Node",
@@ -169,7 +169,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "ebFwiq8gBFaYpqYbdoDODe"
+    "_id": "Profile_d30b0d0d_YbdoDODe"
   },
   {
     "__type__": "cc.Camera",
@@ -215,7 +215,7 @@
     "_usePostProcess": false,
     "_cameraType": -1,
     "_trackingType": 0,
-    "_id": "63WIch3o5BEYRlXzTT0oWc"
+    "_id": "Profile_28a65461_XzTT0oWc"
   },
   {
     "__type__": "cc.UITransform",
@@ -237,7 +237,7 @@
       "x": 0.5,
       "y": 0.5
     },
-    "_id": "d6rUX5yfhMlKoWX2bSbawx"
+    "_id": "Profile_0c5ef8c2_X2bSbawx"
   },
   {
     "__type__": "cc.Canvas",
@@ -253,7 +253,7 @@
       "__id__": 4
     },
     "_alignCanvasWithScreen": true,
-    "_id": "12O/ljcVlEqLmVm3U2gEOQ"
+    "_id": "Profile_3e57fb33_m3U2gEOQ"
   },
   {
     "__type__": "cc.Widget",
@@ -283,10 +283,10 @@
     "_originalHeight": 0,
     "_alignMode": 2,
     "_lockFlags": 0,
-    "_id": "c5V1EV8IpMtrIvY1OE9t2u"
+    "_id": "Profile_9fbf597b_Y1OE9t2u"
   },
   {
-    "__type__": "3b63422rTtD7InndXBN95QI",
+    "__type__": "84e83bjohZAF6Ez9C2sggnw",
     "_name": "",
     "_objFlags": 0,
     "__editorExtras__": {},
@@ -295,27 +295,17 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "statusLabel": null,
-    "playerListLabel": null,
-    "selectionLabel": null,
-    "characterListNode": null,
-    "skillListNode": null,
-    "startGameButton": null,
-    "_id": "3b634db6ad3b43ec89e775",
+    "titleLabel": null,
+    "summaryLabel": null,
+    "roomLabel": null,
+    "backButton": null,
+    "_id": "Profile_bc3585d5_185c-a3b",
     "parchmentFrame": {
       "__uuid__": "15517c45-c0e1-4841-a8ef-fae0b8cac46c@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
-    "seatFrame": {
-      "__uuid__": "b086e16f-0e03-4e15-85ed-50205ae1403f@f9941",
-      "__expectedType__": "cc.SpriteFrame"
-    },
-    "characterCardFrame": {
-      "__uuid__": "4c2e6606-b2ee-408f-a336-e710f1f3fcbe@f9941",
-      "__expectedType__": "cc.SpriteFrame"
-    },
-    "actionCardFrame": {
-      "__uuid__": "55465736-7a11-40af-80c8-6af3391ce8a7@f9941",
+    "profileCardFrame": {
+      "__uuid__": "2e6a3f67-0be8-4c4c-a855-a0145dc831f3@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "statusFrame": {
@@ -548,7 +538,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "TableBackground_5vwke2e7sny2b"
+    "_id": "TableBackground_466mm7w2sny2c"
   },
   {
     "__type__": "cc.UITransform",
@@ -570,7 +560,7 @@
       "x": 0.5,
       "y": 0.5
     },
-    "_id": "ui_roqxmdkwsny2b"
+    "_id": "ui_5z6euugfsny2c"
   },
   {
     "__type__": "cc.Sprite",
@@ -609,7 +599,7 @@
     "_isTrimmedMode": true,
     "_useGrayscale": false,
     "_atlas": null,
-    "_id": "sprite_nr0g1teasny2b"
+    "_id": "sprite_8uloimslsny2c"
   },
   {
     "__type__": "cc.Widget",
@@ -639,11 +629,11 @@
     "_originalHeight": 1280,
     "_alignMode": 2,
     "_lockFlags": 0,
-    "_id": "widget_hp6qevzmsrhkc"
+    "_id": "widget_hdc3id16srhkd"
   },
   {
     "__type__": "cc.Node",
-    "_name": "LobbyParchmentPanel",
+    "_name": "ProfileParchmentPanel",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -663,7 +653,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 145,
+      "y": 60,
       "z": 0
     },
     "_lrot": {
@@ -687,7 +677,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "LobbyParchmentPanel_ecq4nyjnnoj7r"
+    "_id": "ProfileParchmentPanel_ed4r7a22noj7t"
   },
   {
     "__type__": "cc.UITransform",
@@ -701,15 +691,15 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 670,
-      "height": 600
+      "width": 650,
+      "height": 760
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
       "x": 0.5,
       "y": 0.5
     },
-    "_id": "ui_0fk30mbtnoj7r"
+    "_id": "ui_30btwwcynoj7t"
   },
   {
     "__type__": "cc.Sprite",
@@ -748,11 +738,11 @@
     "_isTrimmedMode": true,
     "_useGrayscale": false,
     "_atlas": null,
-    "_id": "sprite_qqnoik10noj7r"
+    "_id": "sprite_s2ztca9mnoj7t"
   },
   {
     "__type__": "cc.Node",
-    "_name": "PlayerSeatPanel",
+    "_name": "ProfileCardPanel",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -772,7 +762,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 430,
+      "y": 240,
       "z": 0
     },
     "_lrot": {
@@ -796,7 +786,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "PlayerSeatPanel_twf243bqnoj7r"
+    "_id": "ProfileCardPanel_3r71rxucnoj7t"
   },
   {
     "__type__": "cc.UITransform",
@@ -810,15 +800,15 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 640,
-      "height": 120
+      "width": 360,
+      "height": 245
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
       "x": 0.5,
       "y": 0.5
     },
-    "_id": "ui_t0gf1fkynoj7r"
+    "_id": "ui_puek2y7lnoj7t"
   },
   {
     "__type__": "cc.Sprite",
@@ -841,7 +831,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "b086e16f-0e03-4e15-85ed-50205ae1403f@f9941",
+      "__uuid__": "2e6a3f67-0be8-4c4c-a855-a0145dc831f3@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
@@ -857,11 +847,11 @@
     "_isTrimmedMode": true,
     "_useGrayscale": false,
     "_atlas": null,
-    "_id": "sprite_qidlrrm0noj7r"
+    "_id": "sprite_akshzs3jnoj7t"
   },
   {
     "__type__": "cc.Node",
-    "_name": "SkillPanel",
+    "_name": "ProfileRoomPanel",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -881,7 +871,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -245,
+      "y": -175,
       "z": 0
     },
     "_lrot": {
@@ -905,7 +895,7 @@
       "y": 0,
       "z": 0
     },
-    "_id": "SkillPanel_hdqo9qosnoj7r"
+    "_id": "ProfileRoomPanel_s67njloxnoj7t"
   },
   {
     "__type__": "cc.UITransform",
@@ -919,15 +909,15 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 640,
-      "height": 92
+      "width": 600,
+      "height": 160
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
       "x": 0.5,
       "y": 0.5
     },
-    "_id": "ui_q8y3cqyanoj7r"
+    "_id": "ui_dd88745hnoj7t"
   },
   {
     "__type__": "cc.Sprite",
@@ -966,6 +956,6 @@
     "_isTrimmedMode": true,
     "_useGrayscale": false,
     "_atlas": null,
-    "_id": "sprite_ngau7xa0noj7r"
+    "_id": "sprite_u9p4aj1gnoj7t"
   }
 ]

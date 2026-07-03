@@ -25,7 +25,7 @@ const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 const LAST_PLAYER_ID_KEY = 'career-war-cocos-player-id';
 
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
-type SceneName = 'Lobby' | 'Battle' | 'Roguelite';
+type SceneName = 'Lobby' | 'Battle' | 'RogueliteBattle' | 'Roguelite' | 'Profile';
 
 @ccclass('HomeScene')
 export class HomeScene extends Component {
@@ -126,14 +126,7 @@ export class HomeScene extends Component {
   }
 
   openProfile(): void {
-    this.showInfoPanel(
-      '玩家档案',
-      [
-        `昵称：${this.nickname}`,
-        '当前版本先保留入口和弹窗。',
-        '下一步可以做正式档案页：胜场、常用角色、肉鸽进度、收藏徽章。',
-      ].join('\n')
-    );
+    director.loadScene('Profile');
   }
 
   tapCandle(): void {
@@ -250,7 +243,9 @@ export class HomeScene extends Component {
 
   private sceneForRoom(room: Room | undefined, fallbackScene: SceneName): SceneName {
     if (!room) return fallbackScene;
-    if (room.phase === 'battle' || room.phase === 'gameOver') return 'Battle';
+    if (room.phase === 'battle' || room.phase === 'gameOver') {
+      return room.gameMode === 'pve_roguelite' ? 'RogueliteBattle' : 'Battle';
+    }
     if (
       room.phase === 'reward' ||
       room.phase === 'roguelite_event' ||

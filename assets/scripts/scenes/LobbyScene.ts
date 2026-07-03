@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { SUMMONER_SKILL_IDS, characterName, summonerSkillName } from '../core/DisplayText';
@@ -26,6 +26,21 @@ export class LobbyScene extends Component {
 
   @property({ type: Button })
   startGameButton: Button | null = null;
+
+  @property({ type: SpriteFrame })
+  parchmentFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  seatFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  characterCardFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  actionCardFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  statusFrame: SpriteFrame | null = null;
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
@@ -173,12 +188,16 @@ export class LobbyScene extends Component {
   }
 
   private ensureMinimalUi(): void {
+    this.ensureSpriteNode('LobbyParchmentPanel', 0, 145, 670, 600, this.parchmentFrame);
+    this.ensureSpriteNode('PlayerSeatPanel', 0, 430, 640, 120, this.seatFrame ?? this.statusFrame);
+    this.ensureSpriteNode('SkillPanel', 0, -245, 640, 92, this.statusFrame);
+
     this.statusLabel ??= this.ensureLabel('StatusLabel', 0, 545, 680, 64, 20);
-    this.playerListLabel ??= this.ensureLabel('PlayerListLabel', 0, 430, 680, 155, 18);
+    this.playerListLabel ??= this.ensureLabel('PlayerListLabel', 0, 430, 620, 112, 17);
     this.selectionLabel ??= this.ensureLabel('SelectionLabel', 0, 320, 680, 42, 20);
-    this.characterListNode ??= this.ensureNode('CharacterList', 0, 235, 680, 260);
-    this.skillListNode ??= this.ensureNode('SkillList', 0, -55, 680, 52);
-    this.startGameButton ??= this.createButton('StartGameButton', 'Start Game', 0, -175, 260, 64, 26, this.node);
+    this.characterListNode ??= this.ensureNode('CharacterList', 0, 220, 660, 340);
+    this.skillListNode ??= this.ensureNode('SkillList', 0, -245, 640, 60);
+    this.startGameButton ??= this.createButton('StartGameButton', 'Start Game', 0, -390, 260, 64, 26, this.node);
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number): Node {
@@ -218,6 +237,7 @@ export class LobbyScene extends Component {
 
     const button = node.addComponent(Button);
     button.interactable = true;
+    this.applyButtonFrame(button, this.frameForButton(name));
 
     const labelNode = new Node('Label');
     node.addChild(labelNode);
@@ -231,7 +251,38 @@ export class LobbyScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 6;
     label.enableWrapText = true;
+    label.color = new Color(57, 34, 17, 255);
     return button;
+  }
+
+  private ensureSpriteNode(name: string, x: number, y: number, width: number, height: number, frame: SpriteFrame | null): Node {
+    const node = this.ensureNode(name, x, y, width, height);
+    if (frame) {
+      const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
+      sprite.spriteFrame = frame;
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    }
+    node.setSiblingIndex(1);
+    return node;
+  }
+
+  private frameForButton(name: string): SpriteFrame | null {
+    if (name.startsWith('Character_')) return this.characterCardFrame ?? this.actionCardFrame;
+    if (name.startsWith('Skill_')) return this.actionCardFrame ?? this.statusFrame;
+    if (name === 'StartGameButton') return this.statusFrame ?? this.actionCardFrame;
+    return this.actionCardFrame;
+  }
+
+  private applyButtonFrame(button: Button, frame: SpriteFrame | null): void {
+    if (!frame) return;
+    const sprite = button.node.getComponent(Sprite) ?? button.node.addComponent(Sprite);
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    button.normalSprite = frame;
+    button.hoverSprite = frame;
+    button.pressedSprite = frame;
+    button.disabledSprite = frame;
+    button.target = button.node;
   }
 
   private clearChildren(node: Node): void {

@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { titleFromId } from '../core/DisplayText';
@@ -23,6 +23,18 @@ export class RogueliteScene extends Component {
 
   @property({ type: Label })
   logLabel: Label | null = null;
+
+  @property({ type: SpriteFrame })
+  parchmentFrame: SpriteFrame | null = null;
+
+  @property({ type: [SpriteFrame] })
+  rewardCardFrames: SpriteFrame[] = [];
+
+  @property({ type: SpriteFrame })
+  actionCardFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  statusFrame: SpriteFrame | null = null;
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
@@ -230,10 +242,13 @@ export class RogueliteScene extends Component {
   }
 
   private ensureMinimalUi(): void {
+    this.ensureSpriteNode('RogueliteParchmentPanel', 0, 70, 675, 770, this.parchmentFrame);
+    this.ensureSpriteNode('RogueliteStatusPanel', 0, 500, 640, 96, this.statusFrame);
+
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 66, 20, this.node);
-    this.summaryLabel ??= this.ensureLabel('SummaryLabel', 0, 450, 680, 100, 18, this.node);
-    this.actionListNode ??= this.ensureNode('ActionList', 0, 125, 680, 430, this.node);
-    this.logLabel ??= this.ensureLabel('RogueliteLogLabel', 0, -350, 690, 350, 16, this.node);
+    this.summaryLabel ??= this.ensureLabel('SummaryLabel', 0, 480, 620, 78, 16, this.node);
+    this.actionListNode ??= this.ensureNode('ActionList', 0, 110, 640, 460, this.node);
+    this.logLabel ??= this.ensureLabel('RogueliteLogLabel', 0, -455, 650, 160, 15, this.node);
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {
@@ -251,6 +266,7 @@ export class RogueliteScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 6;
     label.enableWrapText = true;
+    label.color = new Color(255, 238, 196, 255);
     return label;
   }
 
@@ -264,6 +280,7 @@ export class RogueliteScene extends Component {
 
     const button = node.addComponent(Button);
     button.interactable = true;
+    this.applyButtonFrame(button, this.frameForButton(name));
 
     const labelNode = new Node('Label');
     node.addChild(labelNode);
@@ -276,7 +293,40 @@ export class RogueliteScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 5;
     label.enableWrapText = true;
+    label.color = new Color(57, 34, 17, 255);
     return button;
+  }
+
+  private ensureSpriteNode(name: string, x: number, y: number, width: number, height: number, frame: SpriteFrame | null): Node {
+    const node = this.ensureNode(name, x, y, width, height, this.node);
+    if (frame) {
+      const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
+      sprite.spriteFrame = frame;
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    }
+    node.setSiblingIndex(1);
+    return node;
+  }
+
+  private frameForButton(name: string): SpriteFrame | null {
+    if (name.startsWith('Reward_')) return this.rewardCardFrames[0] ?? this.actionCardFrame;
+    if (name.startsWith('EventChoice_')) return this.rewardCardFrames[1] ?? this.actionCardFrame;
+    if (name.startsWith('Shop_')) return this.rewardCardFrames[2] ?? this.actionCardFrame;
+    if (name.startsWith('Rest_')) return this.rewardCardFrames[0] ?? this.actionCardFrame;
+    if (name === 'FinishRun' || name === 'LeaveShop') return this.statusFrame ?? this.actionCardFrame;
+    return this.actionCardFrame ?? this.statusFrame;
+  }
+
+  private applyButtonFrame(button: Button, frame: SpriteFrame | null): void {
+    if (!frame) return;
+    const sprite = button.node.getComponent(Sprite) ?? button.node.addComponent(Sprite);
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    button.normalSprite = frame;
+    button.hoverSprite = frame;
+    button.pressedSprite = frame;
+    button.disabledSprite = frame;
+    button.target = button.node;
   }
 
   private clearChildren(node: Node): void {

@@ -30,6 +30,9 @@ export class GameManager extends Component {
   battleSceneName = 'Battle';
 
   @property
+  rogueliteBattleSceneName = 'RogueliteBattle';
+
+  @property
   rogueliteSceneName = 'Roguelite';
 
   room: Room | null = null;
@@ -210,7 +213,9 @@ export class GameManager extends Component {
 
   private getSceneNameForPhase(phase: RoomPhase): string | null {
     if (phase === 'lobby') return this.lobbySceneName;
-    if (phase === 'battle' || phase === 'gameOver') return this.battleSceneName;
+    if (phase === 'battle' || phase === 'gameOver') {
+      return this.room?.gameMode === 'pve_roguelite' ? this.rogueliteBattleSceneName : this.battleSceneName;
+    }
     if (ROGUELITE_PHASES.includes(phase)) return this.rogueliteSceneName;
     return null;
   }

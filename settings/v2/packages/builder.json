@@ -7,12 +7,20 @@
       "uuid": "cce4a150-6d40-4e79-a216-7159fee18baf"
     },
     {
+      "url": "db://assets/scenes/Profile.scene",
+      "uuid": "8ac337e7-bf6c-4c9f-97b6-e6c9ebd2b78e"
+    },
+    {
       "url": "db://assets/scenes/Lobby.scene",
       "uuid": "c7bf427d-72d5-4b35-9971-ec03b6ebe9e2"
     },
     {
       "url": "db://assets/scenes/Battle.scene",
       "uuid": "72b1e2d6-ab47-4631-b22b-58bcc0c8fddf"
+    },
+    {
+      "url": "db://assets/scenes/RogueliteBattle.scene",
+      "uuid": "ddb229e2-a7c8-48d8-9461-f2ce56867e40"
     },
     {
       "url": "db://assets/scenes/Roguelite.scene",

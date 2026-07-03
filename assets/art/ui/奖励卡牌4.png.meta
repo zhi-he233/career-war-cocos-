@@ -1,0 +1,134 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "ae4a9520-24e5-4848-89e6-0cc50cfc9552",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "ae4a9520-24e5-4848-89e6-0cc50cfc9552@6c48a",
+      "displayName": "奖励卡牌4",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "imageUuidOrDatabaseUri": "ae4a9520-24e5-4848-89e6-0cc50cfc9552",
+        "isUuid": true,
+        "visible": false,
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "ae4a9520-24e5-4848-89e6-0cc50cfc9552@f9941",
+      "displayName": "奖励卡牌4",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": -1,
+        "offsetY": 1.5,
+        "trimX": 24,
+        "trimY": 11,
+        "width": 333,
+        "height": 748,
+        "rawWidth": 383,
+        "rawHeight": 773,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": true,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "vertices": {
+          "rawPosition": [
+            -166.5,
+            -374,
+            0,
+            166.5,
+            -374,
+            0,
+            -166.5,
+            374,
+            0,
+            166.5,
+            374,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            24,
+            762,
+            357,
+            762,
+            24,
+            14,
+            357,
+            14
+          ],
+          "nuv": [
+            0.06266318537859007,
+            0.018111254851228976,
+            0.9321148825065274,
+            0.018111254851228976,
+            0.06266318537859007,
+            0.9857697283311773,
+            0.9321148825065274,
+            0.9857697283311773
+          ],
+          "minPos": [
+            -166.5,
+            -374,
+            0
+          ],
+          "maxPos": [
+            166.5,
+            374,
+            0
+          ]
+        },
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "ae4a9520-24e5-4848-89e6-0cc50cfc9552@6c48a",
+        "atlasUuid": "",
+        "trimType": "auto"
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "ae4a9520-24e5-4848-89e6-0cc50cfc9552@6c48a"
+  }
+}

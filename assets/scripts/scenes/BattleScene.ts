@@ -1,4 +1,4 @@
-import { _decorator, Button, Color, Component, Label, Node, UITransform, Vec3, tween, UIOpacity } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3, tween, UIOpacity } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { characterName, summonerSkillName } from '../core/DisplayText';
@@ -33,6 +33,30 @@ export class BattleScene extends Component {
 
   @property({ type: DicePanel })
   dicePanel: DicePanel | null = null;
+
+  @property({ type: SpriteFrame })
+  parchmentFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  seatFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  actionFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  attackFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  skillFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  defendFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  endFrame: SpriteFrame | null = null;
+
+  @property({ type: [SpriteFrame] })
+  diceFaces: SpriteFrame[] = [];
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
@@ -93,6 +117,7 @@ export class BattleScene extends Component {
 
     if (this.diceLabel) {
       const latestRoll = this.latestRoll(room);
+      this.updateDiceFaceSprite(decision?.currentRoll ?? latestRoll);
       this.diceLabel.string = decision
         ? `Roll ${decision.currentRoll} | ${this.getPlayerName(decision.actorId)} -> ${this.getPlayerName(decision.targetId)}`
         : latestRoll
@@ -264,13 +289,18 @@ export class BattleScene extends Component {
   }
 
   private ensureMinimalUi(): void {
+    this.ensureSpriteNode('BattleParchmentPanel', 0, 80, 680, 930, this.parchmentFrame);
+    this.ensureSpriteNode('EnemySeatPanel', 0, 335, 640, 145, this.seatFrame);
+    this.ensureSpriteNode('PlayerSeatPanel', 0, -170, 640, 145, this.seatFrame);
+    this.ensureSpriteNode('DiceFrame', 0, 72, 126, 126, this.diceFaces[0] ?? null);
+
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 64, 20, this.node);
-    this.playersLabel ??= this.ensureLabel('PlayersLabel', 0, 375, 680, 265, 17, this.node);
-    this.targetListNode ??= this.ensureNode('TargetList', 0, 160, 680, 74, this.node);
-    this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 65, 680, 58, 28, this.node);
-    this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -25, 220, 60, 26, this.node);
-    this.actionListNode ??= this.ensureNode('ActionList', 0, -125, 680, 80, this.node);
-    this.logLabel ??= this.ensureLabel('BattleLogLabel', 0, -360, 690, 360, 16, this.node);
+    this.playersLabel ??= this.ensureLabel('PlayersLabel', 0, 315, 620, 135, 16, this.node);
+    this.targetListNode ??= this.ensureNode('TargetList', 0, 190, 660, 70, this.node);
+    this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 70, 640, 54, 24, this.node);
+    this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -20, 210, 56, 24, this.node);
+    this.actionListNode ??= this.ensureNode('ActionList', 0, -105, 660, 80, this.node);
+    this.logLabel ??= this.ensureLabel('BattleLogLabel', 0, -440, 650, 190, 15, this.node);
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {
@@ -288,6 +318,7 @@ export class BattleScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 5;
     label.enableWrapText = true;
+    label.color = new Color(255, 238, 196, 255);
     return label;
   }
 
@@ -301,6 +332,7 @@ export class BattleScene extends Component {
 
     const button = node.addComponent(Button);
     button.interactable = true;
+    this.applyButtonFrame(button, this.frameForButton(name));
 
     const labelNode = new Node('Label');
     node.addChild(labelNode);
@@ -313,7 +345,51 @@ export class BattleScene extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 4;
     label.enableWrapText = true;
+    label.color = new Color(57, 34, 17, 255);
     return button;
+  }
+
+  private ensureSpriteNode(name: string, x: number, y: number, width: number, height: number, frame: SpriteFrame | null): Node {
+    const node = this.ensureNode(name, x, y, width, height, this.node);
+    if (frame) {
+      const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
+      sprite.spriteFrame = frame;
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    }
+    node.setSiblingIndex(1);
+    return node;
+  }
+
+  private frameForButton(name: string): SpriteFrame | null {
+    if (name.startsWith('Target_')) return this.seatFrame;
+    if (name === 'RollButton') return this.actionFrame ?? this.attackFrame;
+    if (name.includes('normal_attack')) return this.attackFrame ?? this.actionFrame;
+    if (name.includes('skill')) return this.skillFrame ?? this.actionFrame;
+    if (name.includes('defend') || name.includes('guard')) return this.defendFrame ?? this.actionFrame;
+    if (name.includes('end')) return this.endFrame ?? this.actionFrame;
+    return this.actionFrame;
+  }
+
+  private applyButtonFrame(button: Button, frame: SpriteFrame | null): void {
+    if (!frame) return;
+    const sprite = button.node.getComponent(Sprite) ?? button.node.addComponent(Sprite);
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    button.normalSprite = frame;
+    button.hoverSprite = frame;
+    button.pressedSprite = frame;
+    button.disabledSprite = frame;
+    button.target = button.node;
+  }
+
+  private updateDiceFaceSprite(value: string | number | null | undefined): void {
+    const roll = typeof value === 'number' ? value : Number(value);
+    const frame = this.diceFaces[roll - 1] ?? null;
+    const node = this.node.getChildByName('DiceFrame');
+    if (!frame || !node) return;
+    const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
   }
 
   private clearChildren(node: Node): void {
