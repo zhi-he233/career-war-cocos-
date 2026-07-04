@@ -9,6 +9,18 @@ const { ccclass, property } = _decorator;
 
 @ccclass('LobbyScene')
 export class LobbyScene extends Component {
+  @property
+  lobbyTitle = 'Preparation Room';
+
+  @property
+  modeHint = '';
+
+  @property
+  fixedMaxPlayers = 0;
+
+  @property
+  startButtonText = 'Start Game';
+
   @property({ type: Label })
   statusLabel: Label | null = null;
 
@@ -42,12 +54,13 @@ export class LobbyScene extends Component {
   @property({ type: SpriteFrame })
   statusFrame: SpriteFrame | null = null;
 
-  private gameManager: GameManager | null = null;
-  private serverActions!: ServerActions;
-  private room: Room | null = null;
-  private selectedCharacterId: CharacterId = 'boxer';
-  private selectedSummonerSkillId: SummonerSkillId = 'lucky_plus_one';
+  protected gameManager: GameManager | null = null;
+  protected serverActions!: ServerActions;
+  protected room: Room | null = null;
+  protected selectedCharacterId: CharacterId = 'boxer';
+  protected selectedSummonerSkillId: SummonerSkillId = 'lucky_plus_one';
   private statusText = '';
+  private settingsAppliedRoomId = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -99,12 +112,14 @@ export class LobbyScene extends Component {
 
   private render(room: Room): void {
     this.room = room;
+    this.applyFixedSettings(room);
     const me = this.getMe();
     if (me?.characterId) this.selectedCharacterId = me.characterId;
     if (me?.summonerSkillId) this.selectedSummonerSkillId = me.summonerSkillId;
 
     if (this.statusLabel) {
-      this.statusLabel.string = `Room ${room.id} | ${room.gameMode ?? 'classic'} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}`;
+      const hint = this.modeHint ? `\n${this.modeHint}` : '';
+      this.statusLabel.string = `${this.lobbyTitle}\nRoom ${room.id} | ${room.gameMode ?? 'classic'} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}${hint}`;
     }
     if (this.playerListLabel) {
       this.playerListLabel.string = room.players
@@ -183,8 +198,20 @@ export class LobbyScene extends Component {
     });
   }
 
-  private getMe(): Room['players'][number] | null {
+  protected getMe(): Room['players'][number] | null {
     return this.gameManager?.getLocalPlayer() ?? this.room?.players.find((player) => !player.isBot) ?? this.room?.players[0] ?? null;
+  }
+
+  private applyFixedSettings(room: Room): void {
+    if (this.fixedMaxPlayers <= 0) return;
+    if (room.settings.maxPlayers === this.fixedMaxPlayers) return;
+    if (this.settingsAppliedRoomId === room.id) return;
+
+    const isHost = room.players.some((player) => player.clientId === this.gameManager?.localClientId && player.isHost);
+    if (!isHost) return;
+
+    this.settingsAppliedRoomId = room.id;
+    this.serverActions.updateRoomSettings({ maxPlayers: this.fixedMaxPlayers });
   }
 
   private ensureMinimalUi(): void {
@@ -197,7 +224,8 @@ export class LobbyScene extends Component {
     this.selectionLabel ??= this.ensureLabel('SelectionLabel', 0, 320, 680, 42, 20);
     this.characterListNode ??= this.ensureNode('CharacterList', 0, 220, 660, 340);
     this.skillListNode ??= this.ensureNode('SkillList', 0, -245, 640, 60);
-    this.startGameButton ??= this.createButton('StartGameButton', 'Start Game', 0, -390, 260, 64, 26, this.node);
+    this.startGameButton ??= this.createButton('StartGameButton', this.startButtonText, 0, -390, 260, 64, 26, this.node);
+    this.setButtonLabel(this.startGameButton, this.startButtonText);
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number): Node {
@@ -283,6 +311,11 @@ export class LobbyScene extends Component {
     button.pressedSprite = frame;
     button.disabledSprite = frame;
     button.target = button.node;
+  }
+
+  private setButtonLabel(button: Button | null, text: string): void {
+    const label = button?.node.getChildByName('Label')?.getComponent(Label);
+    if (label) label.string = text;
   }
 
   private clearChildren(node: Node): void {

@@ -27,6 +27,18 @@ export class GameManager extends Component {
   lobbySceneName = 'Lobby';
 
   @property
+  classic1v1LobbySceneName = 'Classic1v1Lobby';
+
+  @property
+  duoLobbySceneName = 'DuoLobby';
+
+  @property
+  pveLobbySceneName = 'PveLobby';
+
+  @property
+  rogueliteLobbySceneName = 'RogueliteLobby';
+
+  @property
   battleSceneName = 'Battle';
 
   @property
@@ -164,6 +176,8 @@ export class GameManager extends Component {
 
   private handleRoomUpdate(data: Room): void {
     const previousPhase = this.room?.phase;
+    const previousRoomId = this.room?.id;
+    const previousMode = this.room?.gameMode ?? this.room?.settings?.gameMode;
 
     if (this.room) {
       Object.assign(this.room, data);
@@ -174,11 +188,16 @@ export class GameManager extends Component {
     this.node.emit(GameEvents.RoomUpdated, this.room);
     this.setStatus(`Room ${this.room.id} | ${this.room.phase}`);
 
+    const currentMode = this.room.gameMode ?? this.room.settings?.gameMode;
+    const shouldRoute =
+      previousPhase !== this.room.phase || previousRoomId !== this.room.id || previousMode !== currentMode;
+
     if (previousPhase !== this.room.phase) {
       this.node.emit(GameEvents.RoomPhaseChanged, this.room.phase, previousPhase);
-      if (this.autoRouteScenes) {
-        this.routeByPhase(this.room.phase);
-      }
+    }
+
+    if (this.autoRouteScenes && shouldRoute) {
+      this.routeByPhase(this.room.phase);
     }
   }
 
@@ -212,11 +231,19 @@ export class GameManager extends Component {
   }
 
   private getSceneNameForPhase(phase: RoomPhase): string | null {
-    if (phase === 'lobby') return this.lobbySceneName;
+    if (phase === 'lobby') return this.getLobbySceneName();
     if (phase === 'battle' || phase === 'gameOver') {
       return this.room?.gameMode === 'pve_roguelite' ? this.rogueliteBattleSceneName : this.battleSceneName;
     }
     if (ROGUELITE_PHASES.includes(phase)) return this.rogueliteSceneName;
     return null;
+  }
+
+  private getLobbySceneName(): string {
+    const mode = this.room?.gameMode ?? this.room?.settings?.gameMode ?? 'classic';
+    if (mode === 'duo_2v2') return this.duoLobbySceneName || this.lobbySceneName;
+    if (mode === 'pve_1v1') return this.pveLobbySceneName || this.lobbySceneName;
+    if (mode === 'pve_roguelite') return this.rogueliteLobbySceneName || this.lobbySceneName;
+    return this.classic1v1LobbySceneName || this.lobbySceneName;
   }
 }

@@ -3,7 +3,11 @@ import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { characterName, summonerSkillName } from '../core/DisplayText';
 import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents, diffFloatingEffects } from '../helpers/BattlePlayerHelpers';
+import { ActionSlots } from '../ui/battle/ActionSlots';
+import { BattleLog } from '../ui/battle/BattleLog';
+import { BattleSeat } from '../ui/battle/BattleSeat';
 import { DicePanel } from '../ui/battle/DicePanel';
+import { SelfPanel } from '../ui/battle/SelfPanel';
 import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
@@ -33,6 +37,15 @@ export class BattleScene extends Component {
 
   @property({ type: DicePanel })
   dicePanel: DicePanel | null = null;
+
+  @property({ type: ActionSlots })
+  actionSlots: ActionSlots | null = null;
+
+  @property({ type: BattleLog })
+  battleLog: BattleLog | null = null;
+
+  @property({ type: SelfPanel })
+  selfPanel: SelfPanel | null = null;
 
   @property({ type: SpriteFrame })
   parchmentFrame: SpriteFrame | null = null;
@@ -98,6 +111,15 @@ export class BattleScene extends Component {
     if (this.dicePanel) {
       this.dicePanel.render(room);
     }
+    if (this.actionSlots) {
+      this.actionSlots.render(room);
+    }
+    if (this.battleLog) {
+      this.battleLog.render(room);
+    }
+    if (this.selfPanel) {
+      this.selfPanel.render(room);
+    }
 
     const actor = this.getActor(room);
     const decision = room.pendingRollDecision;
@@ -109,7 +131,7 @@ export class BattleScene extends Component {
       this.phaseLabel.string = `${title}\n${this.statusText}`;
     }
 
-    if (this.playersLabel) {
+    if (this.playersLabel && !this.selfPanel) {
       this.playersLabel.string = room.players
         .map((player, index) => this.playerLine(room, player, index))
         .join('\n');
@@ -125,7 +147,7 @@ export class BattleScene extends Component {
           : 'Select target, then roll';
     }
 
-    if (this.logLabel) {
+    if (this.logLabel && !this.battleLog) {
       this.logLabel.string = this.latestEvents(room, 12).map((event) => event.message).join('\n');
     }
 
@@ -135,7 +157,9 @@ export class BattleScene extends Component {
     }
 
     this.renderTargets(room);
-    this.renderActions(room);
+    if (!this.actionSlots) {
+      this.renderActions(room);
+    }
   }
 
   private renderTargets(room: Room): void {
@@ -290,17 +314,41 @@ export class BattleScene extends Component {
 
   private ensureMinimalUi(): void {
     this.ensureSpriteNode('BattleParchmentPanel', 0, 80, 680, 930, this.parchmentFrame);
-    this.ensureSpriteNode('EnemySeatPanel', 0, 335, 640, 145, this.seatFrame);
-    this.ensureSpriteNode('PlayerSeatPanel', 0, -170, 640, 145, this.seatFrame);
+    const enemySeatNode = this.ensureSpriteNode('EnemySeatPanel', 0, 335, 640, 145, this.seatFrame);
+    const playerSeatNode = this.ensureSpriteNode('PlayerSeatPanel', 0, -170, 640, 145, this.seatFrame);
     this.ensureSpriteNode('DiceFrame', 0, 72, 126, 126, this.diceFaces[0] ?? null);
+    this.ensureBattleSeat(playerSeatNode, 0);
+    this.ensureBattleSeat(enemySeatNode, 1);
 
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 64, 20, this.node);
-    this.playersLabel ??= this.ensureLabel('PlayersLabel', 0, 315, 620, 135, 16, this.node);
+    this.playersLabel ??= null;
     this.targetListNode ??= this.ensureNode('TargetList', 0, 190, 660, 70, this.node);
+    const dicePanelNode = this.ensureNode('DicePanelNode', 0, 70, 320, 210, this.node);
+    this.dicePanel ??= dicePanelNode.getComponent(DicePanel) ?? dicePanelNode.addComponent(DicePanel);
+    this.dicePanel.diceFaces = this.diceFaces;
     this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 70, 640, 54, 24, this.node);
     this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -20, 210, 56, 24, this.node);
-    this.actionListNode ??= this.ensureNode('ActionList', 0, -105, 660, 80, this.node);
-    this.logLabel ??= this.ensureLabel('BattleLogLabel', 0, -440, 650, 190, 15, this.node);
+    this.actionListNode ??= this.ensureNode('ActionList', 0, -105, 660, 130, this.node);
+    this.actionSlots ??= this.actionListNode.getComponent(ActionSlots) ?? this.actionListNode.addComponent(ActionSlots);
+    this.actionSlots.attackFrame = this.attackFrame ?? this.actionFrame;
+    this.actionSlots.skillFrame = this.skillFrame ?? this.actionFrame;
+    this.actionSlots.summonerFrame = this.actionFrame ?? this.skillFrame;
+
+    const selfPanelNode = this.ensureNode('SelfPanel', 0, -335, 620, 150, this.node);
+    this.selfPanel ??= selfPanelNode.getComponent(SelfPanel) ?? selfPanelNode.addComponent(SelfPanel);
+    this.selfPanel.panelFrame = this.seatFrame ?? this.actionFrame;
+
+    const battleLogNode = this.ensureNode('BattleLog', 0, -520, 650, 150, this.node);
+    this.battleLog ??= battleLogNode.getComponent(BattleLog) ?? battleLogNode.addComponent(BattleLog);
+    this.battleLog.maxLines = 6;
+    this.logLabel ??= null;
+  }
+
+  private ensureBattleSeat(node: Node, playerIndex: number): void {
+    const seat = node.getComponent(BattleSeat) ?? node.addComponent(BattleSeat);
+    seat.playerIndex = playerIndex;
+    seat.seatFrame = this.seatFrame;
+    seat.selectedFrame = this.actionFrame ?? this.seatFrame;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {

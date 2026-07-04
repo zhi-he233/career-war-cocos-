@@ -1,14 +1,4 @@
-/**
- * EmoteHelper — emote display and cooldown management.
- *
- * Emotes are lightweight player-to-player visual reactions.
- * The server broadcasts `playerEmote` events; this helper manages
- * the local cooldown (anti-spam) and active emote tracking.
- */
-
 import type { EmoteId } from '../shared/types';
-
-// ── Emote Definitions ──
 
 export interface EmoteDef {
   id: EmoteId;
@@ -17,12 +7,12 @@ export interface EmoteDef {
 }
 
 export const EMOTE_DEFS: EmoteDef[] = [
-  { id: 'cry',      label: 'Cry',      emoji: '😭' },
-  { id: 'surprise', label: 'Surprise', emoji: '😮' },
-  { id: 'taunt',    label: 'Taunt',    emoji: '😏' },
-  { id: 'angry',    label: 'Angry',    emoji: '😡' },
-  { id: 'like',     label: 'Like',     emoji: '👍' },
-  { id: 'question', label: 'Huh?',     emoji: '❓' },
+  { id: 'cry', label: '哭', emoji: 'T_T' },
+  { id: 'surprise', label: '惊讶', emoji: '!' },
+  { id: 'taunt', label: '嘲讽', emoji: '哼' },
+  { id: 'angry', label: '生气', emoji: '怒' },
+  { id: 'like', label: '赞', emoji: 'OK' },
+  { id: 'question', label: '疑问', emoji: '?' },
 ];
 
 const EMOTE_MAP: Record<string, EmoteDef> = {};
@@ -33,8 +23,6 @@ for (const def of EMOTE_DEFS) {
 export function getEmoteDef(id: string): EmoteDef | undefined {
   return EMOTE_MAP[id];
 }
-
-// ── Active Emote (per player, auto-expire) ──
 
 export interface ActiveEmote {
   playerId: string;
@@ -47,46 +35,31 @@ const DEFAULT_COOLDOWN_MS = 1500;
 const DEFAULT_EXPIRE_MS = 2000;
 
 export class EmoteHelper {
-  private _active: ActiveEmote[] = [];
-  private _lastSendTime = 0;
-  private _cooldownMs: number;
+  private activeEmotes: ActiveEmote[] = [];
+  private lastSendTime = 0;
 
-  constructor(cooldownMs = DEFAULT_COOLDOWN_MS) {
-    this._cooldownMs = cooldownMs;
-  }
+  constructor(private readonly cooldownMs = DEFAULT_COOLDOWN_MS) {}
 
-  /** Whether the local player can send another emote (cooldown check). */
   get canSend(): boolean {
-    return Date.now() - this._lastSendTime >= this._cooldownMs;
+    return Date.now() - this.lastSendTime >= this.cooldownMs;
   }
 
-  /** Get all currently active (non-expired) emotes. */
   get active(): ActiveEmote[] {
-    return this._active;
+    return this.activeEmotes;
   }
 
-  /**
-   * Record that the local player sent an emote. Starts cooldown.
-   * @returns true if the emote was allowed (not on cooldown).
-   */
   trySend(): boolean {
     if (!this.canSend) return false;
-    this._lastSendTime = Date.now();
+    this.lastSendTime = Date.now();
     return true;
   }
 
-  /**
-   * Record an incoming emote from another player.
-   * @param playerId  The player who sent the emote
-   * @param emoteId   The emote ID
-   */
   addIncoming(playerId: string, emoteId: string): void {
     const def = getEmoteDef(emoteId);
     if (!def) return;
 
-    // Deduplicate: replace any existing emote from this player
-    this._active = this._active.filter(a => a.playerId !== playerId);
-    this._active.push({
+    this.activeEmotes = this.activeEmotes.filter((item) => item.playerId !== playerId);
+    this.activeEmotes.push({
       playerId,
       emoji: def.emoji,
       key: `${playerId}-${Date.now()}`,
@@ -94,20 +67,17 @@ export class EmoteHelper {
     });
   }
 
-  /** Get the active emote for a specific player, if any. */
   getForPlayer(playerId: string): ActiveEmote | undefined {
-    return this._active.find(a => a.playerId === playerId);
+    return this.activeEmotes.find((item) => item.playerId === playerId);
   }
 
-  /** Remove expired emotes. Call periodically (e.g. in update()). */
   tick(): void {
     const now = Date.now();
-    this._active = this._active.filter(a => a.expiresAt > now);
+    this.activeEmotes = this.activeEmotes.filter((item) => item.expiresAt > now);
   }
 
-  /** Clear all active emotes and cooldown. */
   reset(): void {
-    this._active = [];
-    this._lastSendTime = 0;
+    this.activeEmotes = [];
+    this.lastSendTime = 0;
   }
 }

@@ -1,4 +1,4 @@
-import { _decorator, Component, Label, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, Label, Node, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../../core/GameManager';
 import { latestEvents } from '../../helpers/BattlePlayerHelpers';
 import type { Room } from '../../shared/types';
@@ -28,11 +28,22 @@ export class BattleLog extends Component {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
   }
 
-  private render(room: Room): void {
+  render(room: Room): void {
     if (!this.logLabel) return;
     this.logLabel.string = latestEvents(room, this.maxLines)
-      .map(e => e.message)
+      .map((event, index) => {
+        const newest = index === 0 ? ' NEW' : '';
+        return `${this.formatTime(event.createdAt)}${newest}  ${event.message}`;
+      })
       .join('\n');
+  }
+
+  private formatTime(timestamp: number): string {
+    const date = new Date(timestamp);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   }
 
   private ensureMinimalUi(): void {
@@ -55,6 +66,7 @@ export class BattleLog extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 5;
     label.enableWrapText = true;
+    label.color = new Color(255, 238, 196, 255);
     return label;
   }
 }

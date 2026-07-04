@@ -7,8 +7,28 @@
       "uuid": "cce4a150-6d40-4e79-a216-7159fee18baf"
     },
     {
+      "url": "db://assets/scenes/ClassicMode.scene",
+      "uuid": "3a5648ec-8473-43d1-aeb5-a2478b886597"
+    },
+    {
       "url": "db://assets/scenes/Profile.scene",
       "uuid": "8ac337e7-bf6c-4c9f-97b6-e6c9ebd2b78e"
+    },
+    {
+      "url": "db://assets/scenes/Classic1v1Lobby.scene",
+      "uuid": "75f76a83-2c65-44db-8806-cdbdf4376117"
+    },
+    {
+      "url": "db://assets/scenes/DuoLobby.scene",
+      "uuid": "fedd398e-406f-4426-ad96-636f91adb022"
+    },
+    {
+      "url": "db://assets/scenes/PveLobby.scene",
+      "uuid": "2cf66e02-9595-46ca-a778-f57d8925c5f1"
+    },
+    {
+      "url": "db://assets/scenes/RogueliteLobby.scene",
+      "uuid": "a1560679-aea0-4176-90f5-b0bef376edd1"
     },
     {
       "url": "db://assets/scenes/Lobby.scene",

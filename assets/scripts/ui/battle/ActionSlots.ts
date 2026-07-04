@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, Label, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../../core/GameManager';
 import { ServerActions } from '../../core/ServerActions';
 import { canResolveDecision } from '../../helpers/BattlePlayerHelpers';
@@ -19,6 +19,21 @@ export class ActionSlots extends Component {
 
   @property({ type: Label })
   hintLabel: Label | null = null;
+
+  @property({ type: Label })
+  selfDamageLabel: Label | null = null;
+
+  @property({ type: SpriteFrame })
+  attackFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  skillFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  summonerFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  disabledFrame: SpriteFrame | null = null;
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
@@ -44,27 +59,50 @@ export class ActionSlots extends Component {
     this.summonerSkillButton?.node.off(Button.EventType.CLICK);
   }
 
-  private render(room: Room): void {
+  render(room: Room): void {
     this.room = room;
-    const actions = room.pendingRollDecision?.availableActions ?? [];
+    const actions = this.getActions(room);
     const canAct = canResolveDecision(room, this.gameManager?.localClientId ?? '');
     this.updateButton(this.attackButton, actions, 'normal_attack', canAct);
     this.updateButton(this.characterSkillButton, actions, 'character_skill', canAct);
     this.updateButton(this.summonerSkillButton, actions, 'summoner_skill', canAct);
 
     if (this.hintLabel) {
-      this.hintLabel.string = room.pendingRollDecision ? `Roll ${room.pendingRollDecision.currentRoll}: choose action` : '';
+      this.hintLabel.string = room.pendingRollDecision ? `Roll ${room.pendingRollDecision.currentRoll}: choose action` : 'Roll first';
     }
+    if (this.selfDamageLabel) {
+      const risky = actions.find((action) => action.requiresSelfDamageAmount);
+      this.selfDamageLabel.string = risky ? 'Self damage required: choose amount later' : '';
+    }
+  }
+
+  private getActions(room: Room): RollDecisionAvailableAction[] {
+    const decision = room.pendingRollDecision;
+    if (!decision) return [];
+    if (decision.availableActions?.length) return decision.availableActions;
+    return [{
+      id: 'normal_attack',
+      label: 'Attack',
+      enabled: true,
+    } as RollDecisionAvailableAction];
   }
 
   private updateButton(button: Button | null, actions: RollDecisionAvailableAction[], id: RollActionType, canAct: boolean): void {
     if (!button) return;
     const action = actions.find((item) => item.id === id);
     button.node.active = Boolean(action);
-    button.interactable = action?.enabled === true && canAct;
+    const enabled = action?.enabled === true && canAct;
+    button.interactable = enabled;
+    this.applyButtonFrame(button, this.frameForAction(id, enabled));
+
+    const opacity = button.node.getComponent(UIOpacity) ?? button.node.addComponent(UIOpacity);
+    opacity.opacity = enabled ? 255 : 145;
+
     const label = button.node.getChildByName('Label')?.getComponent(Label);
     if (label && action) {
-      label.string = action.label || action.id;
+      const reason = action.enabled ? '' : action.reason ? `\n${action.reason}` : '\nUnavailable';
+      label.string = `${action.label || action.id}${reason}`;
+      label.color = enabled ? new Color(57, 34, 17, 255) : new Color(100, 88, 72, 255);
     }
   }
 
@@ -72,7 +110,9 @@ export class ActionSlots extends Component {
     const decision = this.room?.pendingRollDecision;
     if (!this.room || !decision || !canResolveDecision(this.room, this.gameManager?.localClientId ?? '')) return;
 
-    const action = decision.availableActions?.find((item) => item.id === actionType);
+    const action = this.getActions(this.room).find((item) => item.id === actionType);
+    if (action?.enabled === false) return;
+
     this.serverActions.confirmRollDecision({
       roomId: this.room.id,
       pendingDecisionId: decision.id,
@@ -88,13 +128,34 @@ export class ActionSlots extends Component {
   private ensureMinimalUi(): void {
     const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
     if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) {
-      transform.setContentSize(680, 110);
+      transform.setContentSize(680, 130);
     }
 
-    this.hintLabel ??= this.ensureLabel('HintLabel', 0, 42, 660, 30, 17);
-    this.attackButton ??= this.ensureButton('AttackButton', 'Attack', -225, -20, 200, 54, 18);
-    this.characterSkillButton ??= this.ensureButton('CharacterSkillButton', 'Skill', 0, -20, 200, 54, 18);
-    this.summonerSkillButton ??= this.ensureButton('SummonerSkillButton', 'Summoner', 225, -20, 200, 54, 18);
+    this.hintLabel ??= this.ensureLabel('HintLabel', 0, 52, 660, 30, 17);
+    this.attackButton ??= this.ensureButton('AttackButton', 'Attack', -225, -15, 200, 58, 18);
+    this.characterSkillButton ??= this.ensureButton('CharacterSkillButton', 'Skill', 0, -15, 200, 58, 18);
+    this.summonerSkillButton ??= this.ensureButton('SummonerSkillButton', 'Summoner', 225, -15, 200, 58, 18);
+    this.selfDamageLabel ??= this.ensureLabel('SelfDamageLabel', 0, -62, 640, 24, 14);
+  }
+
+  private frameForAction(id: RollActionType, enabled: boolean): SpriteFrame | null {
+    if (!enabled && this.disabledFrame) return this.disabledFrame;
+    if (id === 'normal_attack') return this.attackFrame ?? this.skillFrame ?? this.summonerFrame;
+    if (id === 'character_skill') return this.skillFrame ?? this.attackFrame ?? this.summonerFrame;
+    if (id === 'summoner_skill') return this.summonerFrame ?? this.skillFrame ?? this.attackFrame;
+    return this.skillFrame ?? this.attackFrame ?? this.summonerFrame;
+  }
+
+  private applyButtonFrame(button: Button, frame: SpriteFrame | null): void {
+    if (!frame) return;
+    const sprite = button.node.getComponent(Sprite) ?? button.node.addComponent(Sprite);
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    button.normalSprite = frame;
+    button.hoverSprite = frame;
+    button.pressedSprite = frame;
+    button.disabledSprite = frame;
+    button.target = button.node;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number): Node {
@@ -112,6 +173,7 @@ export class ActionSlots extends Component {
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 5;
     label.enableWrapText = true;
+    label.color = new Color(255, 238, 196, 255);
     return label;
   }
 

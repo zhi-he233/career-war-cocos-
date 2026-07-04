@@ -25,7 +25,17 @@ const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 const LAST_PLAYER_ID_KEY = 'career-war-cocos-player-id';
 
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
-type SceneName = 'Lobby' | 'Battle' | 'RogueliteBattle' | 'Roguelite' | 'Profile';
+type SceneName =
+  | 'ClassicMode'
+  | 'Classic1v1Lobby'
+  | 'DuoLobby'
+  | 'PveLobby'
+  | 'RogueliteLobby'
+  | 'Lobby'
+  | 'Battle'
+  | 'RogueliteBattle'
+  | 'Roguelite'
+  | 'Profile';
 
 @ccclass('HomeScene')
 export class HomeScene extends Component {
@@ -97,11 +107,11 @@ export class HomeScene extends Component {
   }
 
   createClassicRoom(): void {
-    this.launchMode('classic', 'Lobby');
+    this.loadScene('ClassicMode');
   }
 
   createPveRoom(): void {
-    this.launchMode('pve_1v1', 'Lobby');
+    this.launchMode('pve_1v1', 'PveLobby');
   }
 
   createRogueliteRoom(): void {
@@ -109,7 +119,7 @@ export class HomeScene extends Component {
     this.isLaunchingRoguelite = true;
     this.playDiceRoll(() => {
       this.isLaunchingRoguelite = false;
-      this.launchMode('pve_roguelite', 'Roguelite');
+      this.launchMode('pve_roguelite', 'RogueliteLobby');
     });
   }
 
@@ -243,6 +253,9 @@ export class HomeScene extends Component {
 
   private sceneForRoom(room: Room | undefined, fallbackScene: SceneName): SceneName {
     if (!room) return fallbackScene;
+    if (room.phase === 'lobby') {
+      return this.lobbySceneForRoom(room);
+    }
     if (room.phase === 'battle' || room.phase === 'gameOver') {
       return room.gameMode === 'pve_roguelite' ? 'RogueliteBattle' : 'Battle';
     }
@@ -255,7 +268,15 @@ export class HomeScene extends Component {
     ) {
       return 'Roguelite';
     }
-    return 'Lobby';
+    return fallbackScene;
+  }
+
+  private lobbySceneForRoom(room: Room): SceneName {
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
+    if (mode === 'duo_2v2') return 'DuoLobby';
+    if (mode === 'pve_1v1') return 'PveLobby';
+    if (mode === 'pve_roguelite') return 'RogueliteLobby';
+    return 'Classic1v1Lobby';
   }
 
   private loadScene(sceneName: SceneName): void {
