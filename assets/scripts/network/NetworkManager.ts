@@ -32,10 +32,14 @@ export class NetworkManager extends Component {
   @property
   defaultUrl = 'http://localhost:3000';
 
+  @property
+  ackTimeoutMs = 8000;
+
   private socket: Socket | null = null;
   private registeredCallbacks = new Map<string, Set<NetworkCallback>>();
-  private pendingEmits: Array<{ event: string; data?: unknown; callback?: (response: unknown) => void }> = [];
+  private pendingEmits: Array<{ event: string; data?: unknown; callback?: (response: unknown) => void; cancelled?: boolean }> = [];
   private connectStarted = false;
+  private ackTimers: ReturnType<typeof setTimeout>[] = [];
 
   static getInstance(): NetworkManager {
     if (NetworkManager.instance) return NetworkManager.instance;
@@ -114,35 +118,88 @@ export class NetworkManager extends Component {
   }
 
   disconnect(): void {
+    this.clearPending();
     this.socket?.removeAllListeners();
     this.socket?.disconnect();
     this.socket = null;
     this.connectStarted = false;
   }
 
-  emit<T = unknown>(event: string, data?: T): void {
-    if (!this.socket) {
-      this.connect(this.defaultUrl);
-    }
-    if (this.socket) {
-      this.socket.emit(event, data);
-    } else {
-      this.pendingEmits.push({ event, data });
-    }
+  /** Clear all pending emits and ack timers. Called on disconnect. */
+  clearPending(): void {
+    this.pendingEmits.length = 0;
+    for (const id of this.ackTimers) clearTimeout(id);
+    this.ackTimers.length = 0;
   }
 
   emitAck<TPayload = unknown, TResponse = unknown>(
     event: string,
     data?: TPayload,
-    callback?: (response: TResponse) => void
+    callback?: (response: TResponse) => void,
+    timeoutMs?: number,
   ): void {
+    const ms = timeoutMs ?? this.ackTimeoutMs;
+    let settled = false;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    // Wrap callback: clear timeout on real ack, prevent double-fire
+    const wrappedCallback = callback
+      ? (response: TResponse) => {
+          if (settled) return;
+          settled = true;
+          if (timerId !== undefined) {
+            clearTimeout(timerId);
+            this.ackTimers = this.ackTimers.filter(t => t !== timerId);
+          }
+          callback(response);
+        }
+      : undefined;
+
+    // Timeout: fire error + clean up timer reference + cancel pending item
+    if (callback && ms > 0) {
+      timerId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        // Remove self from ackTimers to prevent leak
+        this.ackTimers = this.ackTimers.filter(t => t !== timerId);
+        // Cancel any pending item for this emit
+        for (const item of this.pendingEmits) {
+          if (item.callback === wrappedCallback) item.cancelled = true;
+        }
+        callback({
+          ok: false,
+          error: `Request timed out after ${ms}ms`,
+        } as unknown as TResponse);
+      }, ms);
+      this.ackTimers.push(timerId);
+    }
+
     if (!this.socket) {
       this.connect(this.defaultUrl);
     }
-    if (this.socket) {
-      this.socket.emit(event, data, callback);
+    // Only emit if socket is actually connected; otherwise queue as pending.
+    // This prevents stale emits from being buffered and sent after reconnect.
+    if (this.socket?.connected) {
+      this.socket.emit(event, data, wrappedCallback);
     } else {
-      this.pendingEmits.push({ event, data, callback: callback as ((response: unknown) => void) | undefined });
+      this.pendingEmits.push({
+        event,
+        data,
+        callback: wrappedCallback as ((response: unknown) => void) | undefined,
+        cancelled: false,
+      });
+    }
+  }
+
+  /** Same check for fire-and-forget emits. */
+  emit<T = unknown>(event: string, data?: T): void {
+    if (!this.socket) {
+      this.connect(this.defaultUrl);
+    }
+    if (this.socket?.connected) {
+      this.socket.emit(event, data);
+    } else {
+      this.pendingEmits.push({ event, data, cancelled: false });
     }
   }
 
@@ -163,9 +220,16 @@ export class NetworkManager extends Component {
   }
 
   private flushPendingEmits(): void {
-    if (!this.socket) return;
+    if (!this.socket?.connected) return;
 
-    for (const item of this.pendingEmits.splice(0)) {
+    const remaining: typeof this.pendingEmits = [];
+    for (const item of this.pendingEmits) {
+      if (item.cancelled) continue; // timeout already fired, skip
+      remaining.push(item);
+    }
+    this.pendingEmits.length = 0;
+
+    for (const item of remaining) {
       this.socket.emit(item.event, item.data, item.callback);
     }
   }

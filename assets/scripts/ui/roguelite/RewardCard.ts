@@ -2,6 +2,8 @@ import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame,
 
 const { ccclass, property } = _decorator;
 
+export type RewardCardState = 'available' | 'selected' | 'disabled' | 'taken';
+
 @ccclass('RewardCard')
 export class RewardCard extends Component {
   @property({ type: Label })
@@ -20,22 +22,46 @@ export class RewardCard extends Component {
   rarityFrames: SpriteFrame[] = [];
 
   rewardId = '';
+  state: RewardCardState = 'available';
 
   onLoad(): void {
     this.ensureMinimalUi();
   }
 
-  render(id: string, title: string, subtitle = '', description = '', rarityIndex = 0, selected = false): void {
+  render(
+    id: string,
+    title: string,
+    subtitle = '',
+    description = '',
+    rarityIndex = 0,
+    selected = false,
+    state: RewardCardState = selected ? 'selected' : 'available'
+  ): void {
     this.rewardId = id;
+    this.state = state;
     if (this.titleLabel) this.titleLabel.string = title;
     if (this.subtitleLabel) this.subtitleLabel.string = subtitle;
     if (this.descriptionLabel) this.descriptionLabel.string = description;
-    if (this.tagLabel) this.tagLabel.string = selected ? 'SELECTED' : '';
+    if (this.tagLabel) this.tagLabel.string = this.tagForState(state);
 
     const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);
     sprite.spriteFrame = this.rarityFrames[rarityIndex] ?? this.rarityFrames[0] ?? null;
     sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    sprite.color = selected ? new Color(255, 226, 140, 255) : new Color(255, 255, 255, 255);
+    sprite.color = this.colorForState(state);
+  }
+
+  private tagForState(state: RewardCardState): string {
+    if (state === 'selected') return 'SELECTED';
+    if (state === 'disabled') return 'WAIT';
+    if (state === 'taken') return 'TAKEN';
+    return '';
+  }
+
+  private colorForState(state: RewardCardState): Color {
+    if (state === 'selected') return new Color(255, 226, 140, 255);
+    if (state === 'disabled') return new Color(142, 135, 122, 255);
+    if (state === 'taken') return new Color(186, 232, 168, 255);
+    return new Color(255, 255, 255, 255);
   }
 
   private ensureMinimalUi(): void {

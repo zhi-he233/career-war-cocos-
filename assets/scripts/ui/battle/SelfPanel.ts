@@ -61,7 +61,8 @@ export class SelfPanel extends Component {
     if (this.skillHintLabel) this.skillHintLabel.string = vm.skillHintText;
     if (this.lastRollLabel) this.lastRollLabel.string = vm.lastRollText;
     if (this.hpFillNode) {
-      this.hpFillNode.getComponent(UITransform)?.setContentSize(Math.max(0, 560 * vm.hpPercent / 100), 12);
+      const fillTransform = this.hpFillNode.getComponent(UITransform) ?? this.hpFillNode.addComponent(UITransform);
+      fillTransform.setContentSize(Math.max(0, 560 * vm.hpPercent / 100), 12);
       const sprite = this.hpFillNode.getComponent(Sprite);
       if (sprite) sprite.color = vm.hpPercent <= 30 ? new Color(202, 52, 45, 255) : new Color(79, 180, 92, 255);
     }
@@ -82,7 +83,10 @@ export class SelfPanel extends Component {
     if (this.tagsLabel) this.tagsLabel.string = '';
     if (this.skillHintLabel) this.skillHintLabel.string = '';
     if (this.lastRollLabel) this.lastRollLabel.string = '';
-    this.hpFillNode?.getComponent(UITransform)?.setContentSize(0, 12);
+    if (this.hpFillNode) {
+      const ft = this.hpFillNode.getComponent(UITransform) ?? this.hpFillNode.addComponent(UITransform);
+      ft.setContentSize(0, 12);
+    }
   }
 
   private ensureMinimalUi(): void {

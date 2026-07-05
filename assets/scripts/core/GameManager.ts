@@ -1,5 +1,5 @@
 import { _decorator, Component, Node, director, sys } from 'cc';
-import type { Room, RoomPhase } from '../shared/types';
+import type { GameEvent, PlayerEmoteEvent, Room, RoomPhase } from '../shared/types';
 import { NetworkManager } from '../network/NetworkManager';
 import { GameEvents } from './GameEvents';
 
@@ -54,9 +54,47 @@ export class GameManager extends Component {
   statusText = 'Idle';
 
   private readonly handleRoomUpdateBound = (data: Room) => this.handleRoomUpdate(data);
-  private readonly handleNetworkConnectedBound = (socketId: string | undefined) => this.setStatus(`Connected ${socketId ?? ''}`.trim());
-  private readonly handleNetworkDisconnectedBound = (reason: unknown) => this.setStatus(`Disconnected: ${String(reason ?? 'unknown')}`);
+  private readonly handleBattleLogAddedBound = (event: GameEvent) => this.node.emit(GameEvents.BattleLogAdded, event);
+  private readonly handlePlayerEmoteBound = (event: PlayerEmoteEvent) => this.node.emit(GameEvents.PlayerEmote, event);
+  private readonly handleGameOverBound = (payload: { winnerId?: string; winnerName?: string }) => {
+    this.node.emit(GameEvents.GameOver, payload);
+    this.showToast(`${payload.winnerName ?? 'Unknown'} wins!`, 3);
+  };
+  private readonly handleErrorMessageBound = (message: string) => {
+    this.node.emit(GameEvents.ErrorMessage, message);
+    this.showToast(message, 3);
+  };
+  private readonly handleKickedFromRoomBound = (_payload: unknown) => {
+    this.node.emit(GameEvents.KickedFromRoom);
+    this.clearRoom();
+    this.showToast('You have been kicked from the room', 3);
+    director.loadScene('Home');
+  };
+  private readonly handleCharactersBound = (items: unknown) => {
+    this.node.emit(GameEvents.CharactersUpdated, items);
+  };
+  private readonly handleRoomListUpdatedBound = (items: unknown) => {
+    this.node.emit(GameEvents.RoomListUpdated, items);
+  };
+  private readonly handleClientPongBound = (payload: { clientSentAt?: unknown }) => {
+    if (typeof (payload as { clientSentAt?: number }).clientSentAt === 'number') {
+      this._lastRttMs = Math.max(0, Date.now() - (payload as { clientSentAt: number }).clientSentAt);
+    }
+  };
+  private readonly handleNetworkConnectedBound = (socketId: string | undefined) => {
+    this.setStatus(`Connected ${socketId ?? ''}`.trim());
+    this.startClientPing();
+    this.tryResumeOnReconnect();
+  };
+  private readonly handleNetworkDisconnectedBound = (reason: unknown) => {
+    this.setStatus(`Disconnected: ${String(reason ?? 'unknown')}`);
+    this.stopClientPing();
+    this.pendingResumeOnReconnect = !!this.room;
+  };
   private readonly handleNetworkErrorBound = (error: unknown) => this.setStatus(`Network error: ${this.errorMessage(error)}`);
+  private pendingResumeOnReconnect = false;
+  private _lastRttMs = -1;
+  private _pingTimer: ReturnType<typeof setInterval> | null = null;
 
   static getInstance(): GameManager {
     if (GameManager.instance) return GameManager.instance;
@@ -80,14 +118,31 @@ export class GameManager extends Component {
     this.networkManager = this.networkManager ?? NetworkManager.getInstance();
     this.networkManager.on<Room>('roomUpdate', this.handleRoomUpdateBound);
     this.networkManager.on<Room>('gameStateUpdated', this.handleRoomUpdateBound);
+    this.networkManager.on<GameEvent>('battleLogAdded', this.handleBattleLogAddedBound);
+    this.networkManager.on<PlayerEmoteEvent>('playerEmote', this.handlePlayerEmoteBound);
+    this.networkManager.on<{ winnerId?: string; winnerName?: string }>('gameOver', this.handleGameOverBound);
+    this.networkManager.on<string>('errorMessage', this.handleErrorMessageBound);
+    this.networkManager.on<unknown>('kickedFromRoom', this.handleKickedFromRoomBound);
+    this.networkManager.on<unknown>('characters', this.handleCharactersBound);
+    this.networkManager.on<unknown>('roomListUpdated', this.handleRoomListUpdatedBound);
+    this.networkManager.on<unknown>('clientPong', this.handleClientPongBound);
     this.networkManager.node.on(GameEvents.NetworkConnected, this.handleNetworkConnectedBound, this);
     this.networkManager.node.on(GameEvents.NetworkDisconnected, this.handleNetworkDisconnectedBound, this);
     this.networkManager.node.on(GameEvents.NetworkError, this.handleNetworkErrorBound, this);
   }
 
   onDestroy(): void {
+    this.stopClientPing();
     this.networkManager?.off<Room>('roomUpdate', this.handleRoomUpdateBound);
     this.networkManager?.off<Room>('gameStateUpdated', this.handleRoomUpdateBound);
+    this.networkManager?.off<GameEvent>('battleLogAdded', this.handleBattleLogAddedBound);
+    this.networkManager?.off<PlayerEmoteEvent>('playerEmote', this.handlePlayerEmoteBound);
+    this.networkManager?.off<{ winnerId?: string; winnerName?: string }>('gameOver', this.handleGameOverBound);
+    this.networkManager?.off<string>('errorMessage', this.handleErrorMessageBound);
+    this.networkManager?.off<unknown>('kickedFromRoom', this.handleKickedFromRoomBound);
+    this.networkManager?.off<unknown>('characters', this.handleCharactersBound);
+    this.networkManager?.off<unknown>('roomListUpdated', this.handleRoomListUpdatedBound);
+    this.networkManager?.off<unknown>('clientPong', this.handleClientPongBound);
     this.networkManager?.node.off(GameEvents.NetworkConnected, this.handleNetworkConnectedBound, this);
     this.networkManager?.node.off(GameEvents.NetworkDisconnected, this.handleNetworkDisconnectedBound, this);
     this.networkManager?.node.off(GameEvents.NetworkError, this.handleNetworkErrorBound, this);
@@ -178,6 +233,135 @@ export class GameManager extends Component {
     return this.room.players.find((player) => player.clientId === clientId || player.id === clientId) ?? null;
   }
 
+  /** Mark that we should try to resume the current room on next reconnect. */
+  enableReconnectResume(): void {
+    this.pendingResumeOnReconnect = !!this.room;
+  }
+
+  /** Clear local room state. Does NOT send leaveRoom to server. */
+  clearRoom(): void {
+    this.room = null;
+    this.localPlayerId = '';
+    this.pendingResumeOnReconnect = false;
+    sys.localStorage.removeItem('career-war-cocos-player-id');
+    sys.localStorage.removeItem('career-war-cocos-last-room-id');
+  }
+
+  /**
+   * Leave current room. Sends leaveRoom to server, then clears local state.
+   * emitAck's built-in timeout guarantees the callback always fires (ack or timeout).
+   * Safe to call even if not in a room.
+   */
+  leaveRoom(): void {
+    if (!this.room) return;
+    const leavingRoomId = this.room.id;
+
+    this.emitAck('leaveRoom', {}, () => {
+      // Guard: if we already joined a different room, don't clear it
+      if (this.room?.id !== leavingRoomId) return;
+      this.clearRoom();
+      director.loadScene('Home');
+    });
+  }
+
+  // ── Server event subscription (for scenes) ──
+
+  onBattleLogAdded(callback: (event: GameEvent) => void, target?: unknown): void {
+    this.node.on(GameEvents.BattleLogAdded, callback, target);
+  }
+  offBattleLogAdded(callback: (event: GameEvent) => void, target?: unknown): void {
+    this.node.off(GameEvents.BattleLogAdded, callback, target);
+  }
+
+  onPlayerEmote(callback: (event: PlayerEmoteEvent) => void, target?: unknown): void {
+    this.node.on(GameEvents.PlayerEmote, callback, target);
+  }
+  offPlayerEmote(callback: (event: PlayerEmoteEvent) => void, target?: unknown): void {
+    this.node.off(GameEvents.PlayerEmote, callback, target);
+  }
+
+  onGameOver(callback: (payload: { winnerId?: string; winnerName?: string }) => void, target?: unknown): void {
+    this.node.on(GameEvents.GameOver, callback, target);
+  }
+  offGameOver(callback: (payload: { winnerId?: string; winnerName?: string }) => void, target?: unknown): void {
+    this.node.off(GameEvents.GameOver, callback, target);
+  }
+
+  onErrorMessage(callback: (message: string) => void, target?: unknown): void {
+    this.node.on(GameEvents.ErrorMessage, callback, target);
+  }
+  offErrorMessage(callback: (message: string) => void, target?: unknown): void {
+    this.node.off(GameEvents.ErrorMessage, callback, target);
+  }
+
+  onKickedFromRoom(callback: () => void, target?: unknown): void {
+    this.node.on(GameEvents.KickedFromRoom, callback, target);
+  }
+  offKickedFromRoom(callback: () => void, target?: unknown): void {
+    this.node.off(GameEvents.KickedFromRoom, callback, target);
+  }
+
+  onCharactersUpdated(callback: (items: unknown) => void, target?: unknown): void {
+    this.node.on(GameEvents.CharactersUpdated, callback, target);
+  }
+  offCharactersUpdated(callback: (items: unknown) => void, target?: unknown): void {
+    this.node.off(GameEvents.CharactersUpdated, callback, target);
+  }
+
+  onRoomListUpdated(callback: (items: unknown) => void, target?: unknown): void {
+    this.node.on(GameEvents.RoomListUpdated, callback, target);
+  }
+  offRoomListUpdated(callback: (items: unknown) => void, target?: unknown): void {
+    this.node.off(GameEvents.RoomListUpdated, callback, target);
+  }
+
+  /** Latest round-trip time in ms, or -1 if never measured. */
+  get lastRttMs(): number { return this._lastRttMs; }
+
+  // ── Heartbeat ──
+
+  private startClientPing(): void {
+    this.stopClientPing();
+    this.sendClientPing();
+    this._pingTimer = setInterval(() => this.sendClientPing(), 5000);
+  }
+
+  private stopClientPing(): void {
+    if (this._pingTimer !== null) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
+    }
+  }
+
+  private sendClientPing(): void {
+    if (!this.networkManager?.isConnected()) return;
+    this.networkManager.emit('clientPing', { clientSentAt: Date.now() });
+  }
+
+  // ── Reconnection ──
+
+  private tryResumeOnReconnect(): void {
+    if (!this.pendingResumeOnReconnect || !this.room) return;
+    this.pendingResumeOnReconnect = false;
+    const roomId = this.room.id;
+    const playerId = this.localPlayerId;
+    this.networkManager?.emitAck('resumeRoom', {
+      roomId,
+      clientId: this.localClientId,
+      playerId: playerId || undefined,
+    }, (response: unknown) => {
+      const ack = response as { ok?: boolean; error?: unknown; room?: Room; playerId?: string };
+      if (ack.ok && ack.room) {
+        this.applyRoomUpdate(ack.room);
+        if (ack.playerId) this.setLocalPlayerId(ack.playerId);
+      } else {
+        this.showToast('Reconnection failed — returning to home', 3);
+        this.clearRoom();
+        director.loadScene('Home');
+      }
+    });
+  }
+
   private handleRoomUpdate(data: Room): void {
     const previousPhase = this.room?.phase;
     const previousRoomId = this.room?.id;
@@ -202,6 +386,11 @@ export class GameManager extends Component {
 
     if (this.autoRouteScenes && shouldRoute) {
       this.routeByPhase(this.room.phase);
+    }
+
+    // Enable reconnection resume as long as we have a room
+    if (this.room.phase !== 'gameOver') {
+      this.pendingResumeOnReconnect = true;
     }
   }
 

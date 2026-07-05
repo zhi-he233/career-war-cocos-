@@ -65,16 +65,16 @@ export class ServerActions {
     this.gameManager.emitAck('confirmRollDecision', payload, callback);
   }
 
-  chooseRogueliteReward(rewardId: string): void {
-    this.gameManager.emitAck('chooseRogueliteReward', { rewardId });
+  chooseRogueliteReward(rewardId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('chooseRogueliteReward', { rewardId }, callback);
   }
 
   chooseRogueliteEventOption(choiceId: string): void {
     this.gameManager.emitAck('chooseRogueliteEventOption', { choiceId });
   }
 
-  chooseRogueliteContinue(choice: 'finish' | 'continue', mapNode?: unknown): void {
-    this.gameManager.emitAck('chooseRogueliteContinue', { choice, mapNode });
+  chooseRogueliteContinue(choice: 'finish' | 'continue', mapNode?: unknown, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('chooseRogueliteContinue', { choice, mapNode }, callback);
   }
 
   buyRogueliteShopItem(itemId: string): void {

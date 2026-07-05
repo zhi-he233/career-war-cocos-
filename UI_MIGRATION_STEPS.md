@@ -46,6 +46,8 @@
   - `assets/prefabs/system/RuleGuidePanel.prefab`
   - `assets/prefabs/system/BuffIcon.prefab`
   - `assets/prefabs/system/CurrencyBar.prefab`
+- Profile prefabs:
+  - `assets/prefabs/profile/ProfilePanel.prefab`
 - LobbyScene now renders character cards and player list rows through prefabs first.
 - LobbyScene now shows character / summoner-skill detail dialogs through prefabs.
 - DuoLobby now has a reusable two-slot picker that writes selected character and skill into slot 1 or slot 2.
@@ -58,9 +60,16 @@
 - Roguelite event title, rarity, stage, and description now render through `RogueliteEventHeader`.
 - Roguelite shop title, gold, refresh status, and leave-shop action now render through `ShopControlBar`.
 - Roguelite shop items now render through `ShopItemCard`, with local disabled feedback for not enough gold / already bought.
+- RewardCard now supports available / selected / disabled / taken states.
+- Roguelite reward choices now lock locally after selection, show selected/pending feedback, and unlock again if the server rejects or does not respond.
+- RogueliteMapNode now supports current / available / locked / cleared / preview states with room-type colors.
+- Roguelite continue phase now shows a small route preview: cleared previous node, selectable next route nodes, and preview nodes for the following stage.
+- Roguelite route selection now locks locally after clicking and unlocks again if the server rejects or does not respond.
 - HomeScene rule-book button now opens `RuleGuidePanel` when its prefab is bound.
 - HomeScene, BattleScene, RogueliteBattle, and RogueliteScene now have `ToastLayer` prefab references.
 - GameManager now exposes `showToast(message, duration)` and emits toast feedback for server ack success/failure.
+- ProfileScene now renders through `ProfilePanel.prefab`.
+- ProfileService now owns local profile generation / storage. UI does not read localStorage directly.
 
 ## Next Batch
 
@@ -74,14 +83,16 @@
 2. Roguelite Core UI
    - Keep reward choices on RewardCard for now.
    - Server-side shop refresh action, if that rule is kept.
-   - Reward choice selected / taken state polish.
 
 3. Roguelite Map
-   - Run map nodes.
-   - Room type color states.
-   - Available / locked / cleared / current node states.
+   - Draw route connection lines between visible map nodes.
+   - Add a larger full-run map panel later if the route needs inspection outside the continue phase.
 
-4. System Panels
+4. Profile Online Integration
+   - Replace ProfileService local mock generation with real `/api/profile/me` when the server endpoint exists.
+   - Add login/register UI only after deciding whether Cocos should own auth or reuse existing account flow.
+
+5. System Panels
    - Toast / highlight layer.
 
 ## How To Replace Battle UI Art
@@ -118,6 +129,12 @@ Do not rebuild these as scene-only nodes. Keep them as prefabs so the same playe
 - `ShopControlBar.prefab` is the shop phase header and control bar. Refresh is displayed but intentionally not connected until the server has a refresh socket action.
 - `RewardCard.prefab` remains the generic card for reward choices, rest actions, and simple continue actions.
 - `CurrencyBar.prefab` and `BuffIcon.prefab` are small shared parts meant to be composed inside larger panels.
+
+## Current Profile UI
+
+- `ProfilePanel.prefab` displays identity, level, PVP stats, roguelite stats, career summary, achievements, and current room snapshot.
+- `ProfileService.ts` is the only place that generates or stores local profile data.
+- The profile page is intentionally offline-capable right now. Do not wire UI directly to `AuthManager` or REST calls; put that work behind `ProfileService` later.
 
 Do not move existing files under `assets/art`. Add new art beside the old files or in new directories only when needed, because moving imported assets can break Cocos SpriteFrame UUID references.
 

@@ -23,6 +23,15 @@ export class RoomSettingsPanel extends Component {
   @property({ type: Button })
   duplicateButton: Button | null = null;
 
+  @property({ type: Button })
+  modeClassicButton: Button | null = null;
+
+  @property({ type: Button })
+  modeDuoButton: Button | null = null;
+
+  @property({ type: Button })
+  modeInfoButton: Button | null = null;
+
   @property({ type: SpriteFrame })
   panelFrame: SpriteFrame | null = null;
 
@@ -31,6 +40,8 @@ export class RoomSettingsPanel extends Component {
 
   private maxPlayersHandler: ((maxPlayers: number) => void) | null = null;
   private duplicateHandler: ((allowDuplicateCharacters: boolean) => void) | null = null;
+  private modeHandler: ((mode: 'classic' | 'duo_2v2') => void) | null = null;
+  private modeInfoHandler: (() => void) | null = null;
   private currentAllowDuplicateCharacters = true;
 
   onLoad(): void {
@@ -39,6 +50,9 @@ export class RoomSettingsPanel extends Component {
     this.max4Button?.node.on(Button.EventType.CLICK, () => this.maxPlayersHandler?.(4), this);
     this.max8Button?.node.on(Button.EventType.CLICK, () => this.maxPlayersHandler?.(8), this);
     this.duplicateButton?.node.on(Button.EventType.CLICK, () => this.duplicateHandler?.(!this.currentAllowDuplicateCharacters), this);
+    this.modeClassicButton?.node.on(Button.EventType.CLICK, () => this.modeHandler?.('classic'), this);
+    this.modeDuoButton?.node.on(Button.EventType.CLICK, () => this.modeHandler?.('duo_2v2'), this);
+    this.modeInfoButton?.node.on(Button.EventType.CLICK, () => this.modeInfoHandler?.(), this);
   }
 
   onDestroy(): void {
@@ -46,28 +60,62 @@ export class RoomSettingsPanel extends Component {
     this.max4Button?.node.off(Button.EventType.CLICK);
     this.max8Button?.node.off(Button.EventType.CLICK);
     this.duplicateButton?.node.off(Button.EventType.CLICK);
+    this.modeClassicButton?.node.off(Button.EventType.CLICK);
+    this.modeDuoButton?.node.off(Button.EventType.CLICK);
+    this.modeInfoButton?.node.off(Button.EventType.CLICK);
   }
 
-  setHandlers(maxPlayersHandler: (maxPlayers: number) => void, duplicateHandler: (allowDuplicateCharacters: boolean) => void): void {
+  setHandlers(
+    maxPlayersHandler: (maxPlayers: number) => void,
+    duplicateHandler: (allowDuplicateCharacters: boolean) => void,
+    modeHandler?: (mode: 'classic' | 'duo_2v2') => void,
+    modeInfoHandler?: () => void,
+  ): void {
     this.maxPlayersHandler = maxPlayersHandler;
     this.duplicateHandler = duplicateHandler;
+    this.modeHandler = modeHandler ?? null;
+    this.modeInfoHandler = modeInfoHandler ?? null;
   }
 
   render(room: Room, localClientId: string, fixedMaxPlayers: number): void {
     const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+    const isPvE = mode === 'pve_1v1' || mode === 'pve_roguelite';
     const isHost = room.players.some((player) => player.clientId === localClientId && player.isHost);
-    const canEdit = isHost && fixedMaxPlayers <= 0 && mode === 'classic';
+    // Mode switching: allowed for host in any non-PvE mode (so you can switch back from duo)
+    const canEditMode = isHost && fixedMaxPlayers <= 0 && !isPvE;
+    // Classic-only settings (max players, duplicate): only editable in classic
+    const canEditSettings = isHost && fixedMaxPlayers <= 0 && mode === 'classic';
     this.currentAllowDuplicateCharacters = room.settings.allowDuplicateCharacters;
 
     if (this.titleLabel) this.titleLabel.string = 'Room Settings';
     if (this.summaryLabel) {
-      this.summaryLabel.string = `${mode} | max ${room.settings.maxPlayers} | duplicate ${room.settings.allowDuplicateCharacters ? 'on' : 'off'}`;
+      const dupText = room.settings.allowDuplicateCharacters ? 'dup ok' : 'no dup';
+      this.summaryLabel.string = `Mode: ${mode} | ${room.settings.maxPlayers}P | ${dupText}`;
     }
 
-    for (const button of [this.max2Button, this.max4Button, this.max8Button, this.duplicateButton]) {
-      if (button) button.interactable = canEdit;
+    const editButtons = [this.max2Button, this.max4Button, this.max8Button, this.duplicateButton];
+    const modeButtons = [this.modeClassicButton, this.modeDuoButton];
+    for (const button of editButtons) {
+      if (button) button.interactable = canEditSettings;
+    }
+    for (const button of modeButtons) {
+      if (button) {
+        button.interactable = canEditMode;
+        button.node.active = !isPvE;
+      }
+    }
+    if (this.modeInfoButton) {
+      this.modeInfoButton.interactable = true;
+      this.modeInfoButton.node.active = !isPvE;
     }
     this.setButtonLabel(this.duplicateButton, room.settings.allowDuplicateCharacters ? 'Duplicate: ON' : 'Duplicate: OFF');
+    if (this.modeClassicButton) this.setButtonLabel(this.modeClassicButton, mode === 'classic' ? '> Classic' : 'Classic');
+    if (this.modeDuoButton) this.setButtonLabel(this.modeDuoButton, mode === 'duo_2v2' ? '> Duo' : 'Duo');
+
+    // Show non-host hint
+    if (this.summaryLabel && !isHost) {
+      this.summaryLabel.string += ' (host only)';
+    }
   }
 
   private ensureMinimalUi(): void {
@@ -81,10 +129,13 @@ export class RoomSettingsPanel extends Component {
 
     this.titleLabel ??= this.makeLabel('TitleLabel', -220, 22, 170, 24, 17);
     this.summaryLabel ??= this.makeLabel('SummaryLabel', 70, 22, 360, 24, 14);
-    this.max2Button ??= this.makeButton('Max2Button', '2P', -210, -24, 80, 34, 14);
-    this.max4Button ??= this.makeButton('Max4Button', '4P', -115, -24, 80, 34, 14);
-    this.max8Button ??= this.makeButton('Max8Button', '8P', -20, -24, 80, 34, 14);
-    this.duplicateButton ??= this.makeButton('DuplicateButton', 'Duplicate: ON', 175, -24, 190, 34, 14);
+    this.modeClassicButton ??= this.makeButton('ModeClassicButton', 'Classic', -210, -24, 100, 34, 13);
+    this.modeDuoButton    ??= this.makeButton('ModeDuoButton', 'Duo', -100, -24, 100, 34, 13);
+    this.max2Button       ??= this.makeButton('Max2Button', '2P', 10, -24, 70, 34, 14);
+    this.max4Button       ??= this.makeButton('Max4Button', '4P', 90, -24, 70, 34, 14);
+    this.max8Button       ??= this.makeButton('Max8Button', '8P', 170, -24, 70, 34, 14);
+    this.duplicateButton  ??= this.makeButton('DuplicateButton', 'Duplicate: ON', 250, -24, 180, 34, 13);
+    this.modeInfoButton   ??= this.makeButton('ModeInfoButton', '?', 290, 18, 32, 24, 14);
   }
 
   private makeNode(name: string, x: number, y: number, width: number, height: number): Node {

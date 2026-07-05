@@ -1,7 +1,7 @@
 import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
-import { SUMMONER_SKILL_IDS, characterName, summonerSkillName } from '../core/DisplayText';
+import { SUMMONER_SKILL_IDS, characterName, summonerSkillName, characterDescription, gameModeDescription } from '../core/DisplayText';
 import { CharacterCard } from '../ui/lobby/CharacterCard';
 import { CharacterDetailDialog } from '../ui/lobby/CharacterDetailDialog';
 import { DuoSlotPicker } from '../ui/lobby/DuoSlotPicker';
@@ -10,8 +10,9 @@ import { PlayerListItem } from '../ui/lobby/PlayerListItem';
 import { RoomSettingsPanel } from '../ui/lobby/RoomSettingsPanel';
 import { SummonerSkillCard } from '../ui/lobby/SummonerSkillCard';
 import { SummonerSkillDetailDialog } from '../ui/lobby/SummonerSkillDetailDialog';
+import { InfoDialog } from '../ui/system/InfoDialog';
 import { characterList } from '../shared/characters';
-import type { Character, CharacterId, Room, SummonerSkillId } from '../shared/types';
+import type { Character, CharacterId, Player, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -89,6 +90,9 @@ export class LobbyScene extends Component {
   @property({ type: Prefab })
   summonerSkillDetailDialogPrefab: Prefab | null = null;
 
+  @property({ type: Prefab })
+  infoDialogPrefab: Prefab | null = null;
+
   protected gameManager: GameManager | null = null;
   protected serverActions!: ServerActions;
   protected room: Room | null = null;
@@ -99,6 +103,7 @@ export class LobbyScene extends Component {
   private roomSettingsPanel: RoomSettingsPanel | null = null;
   private characterDetailDialog: CharacterDetailDialog | null = null;
   private summonerSkillDetailDialog: SummonerSkillDetailDialog | null = null;
+  private infoDialog: InfoDialog | null = null;
   private statusText = '';
   private settingsAppliedRoomId = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
@@ -124,6 +129,19 @@ export class LobbyScene extends Component {
   }
 
   chooseCharacter(characterId: CharacterId): void {
+    // Guard: don't pick a character already taken by another player
+    const room = this.room;
+    if (room) {
+      const allowDup = room.settings.allowDuplicateCharacters !== false;
+      const me = this.getMe();
+      if (!allowDup) {
+        const takenByOther = room.players.some(p => p.characterId === characterId && p.id !== me?.id);
+        if (takenByOther) {
+          this.gameManager?.showToast('Character already taken', 2);
+          return;
+        }
+      }
+    }
     this.selectedCharacterId = characterId;
     this.serverActions.chooseCharacter(characterId);
     this.showCharacterDetail(characterId);
@@ -133,6 +151,20 @@ export class LobbyScene extends Component {
     this.selectedSummonerSkillId = summonerSkillId;
     this.serverActions.chooseSummonerSkill(summonerSkillId);
     this.showSummonerSkillDetail(summonerSkillId);
+  }
+
+  /** Open reusable InfoDialog. Falls back to toast if prefab not bound. */
+  showInfo(title: string, body: string): void {
+    if (this.infoDialogPrefab && !this.infoDialog?.node?.isValid) {
+      const node = this.instantiatePrefab(this.infoDialogPrefab, 'InfoDialog', 0, 20, 520, 440, this.node);
+      node.setSiblingIndex(this.node.children.length - 1);
+      this.infoDialog = node.getComponent(InfoDialog) ?? node.addComponent(InfoDialog);
+    }
+    if (this.infoDialog) {
+      this.infoDialog.show(title, body);
+    } else {
+      this.gameManager?.showToast(body.slice(0, 120), 3);
+    }
   }
 
   startGame(): void {
@@ -160,8 +192,10 @@ export class LobbyScene extends Component {
     if (me?.summonerSkillId) this.selectedSummonerSkillId = me.summonerSkillId;
 
     if (this.statusLabel) {
-      const hint = this.modeHint ? `\n${this.modeHint}` : '';
-      this.statusLabel.string = `${this.lobbyTitle}\nRoom ${room.id} | ${room.gameMode ?? 'classic'} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}${hint}`;
+      const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+      const effectiveHint = this.modeHint || (mode === 'pve_roguelite' ? 'Roguelite: starting character locked, gain rewards through stages.' : '');
+      const hint = effectiveHint ? `\n${effectiveHint}` : '';
+      this.statusLabel.string = `${this.lobbyTitle}\nRoom ${room.id} | ${mode} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}${hint}`;
     }
     if (this.playerListNode && this.playerListItemPrefab) {
       this.renderPlayerListPrefab(room);
@@ -195,21 +229,35 @@ export class LobbyScene extends Component {
     if (!this.characterListNode) return;
     this.clearChildren(this.characterListNode);
 
+    const allowDup = room.settings.allowDuplicateCharacters !== false;
+    const me = this.getMe();
+    const takenBy = new Map<CharacterId, string>();
+    if (!allowDup) {
+      for (const p of room.players) {
+        if (p.characterId && p.id !== me?.id) {
+          takenBy.set(p.characterId, p.nickname);
+        }
+      }
+    }
+
     const visible = this.getVisibleCharacters(room).slice(0, 12);
     visible.forEach((character, index) => {
       const col = index % 3;
       const row = Math.floor(index / 3);
       const selected = character.id === this.selectedCharacterId;
+      const taker = (!allowDup && !selected) ? (takenBy.get(character.id) ?? null) : null;
+
       if (this.characterCardPrefab) {
         const node = this.instantiatePrefab(this.characterCardPrefab, `Character_${character.id}`, -215 + col * 215, 110 - row * 86, 200, 92, this.characterListNode!);
         const card = node.getComponent(CharacterCard) ?? node.addComponent(CharacterCard);
-        card.render(character, selected);
+        card.render(character, selected, taker);
         const button = node.getComponent(Button) ?? node.addComponent(Button);
         button.node.on(Button.EventType.CLICK, () => this.chooseCharacter(character.id), this);
       } else {
+        const takenLabel = taker ? ` [${taker}]` : '';
         const button = this.createButton(
           `Character_${character.id}`,
-          `${selected ? '> ' : ''}${characterName(character.id)}`,
+          `${selected ? '> ' : ''}${characterName(character.id)}${takenLabel}`,
           -215 + col * 215,
           -row * 58,
           200,
@@ -217,6 +265,7 @@ export class LobbyScene extends Component {
           18,
           this.characterListNode!
         );
+        button.interactable = !taker;
         button.node.on(Button.EventType.CLICK, () => this.chooseCharacter(character.id), this);
       }
     });
@@ -225,13 +274,19 @@ export class LobbyScene extends Component {
   private renderPlayerListPrefab(room: Room): void {
     if (!this.playerListNode || !this.playerListItemPrefab) return;
     this.clearChildren(this.playerListNode);
+    const localId = this.gameManager?.localClientId ?? '';
+    const isHost = room.players.some(p => p.clientId === localId && p.isHost);
     const count = Math.max(room.settings.maxPlayers, room.players.length, 1);
     for (let index = 0; index < count; index += 1) {
       const player = room.players[index] ?? null;
       const node = this.instantiatePrefab(this.playerListItemPrefab, `Player_${index}`, 0, 28 - index * 56, 620, 52, this.playerListNode);
       const item = node.getComponent(PlayerListItem) ?? node.addComponent(PlayerListItem);
-      item.render(player, index, this.gameManager?.localClientId ?? '');
+      item.render(player, index, localId, isHost, (p) => this.onKickPlayer(p));
     }
+  }
+
+  private onKickPlayer(player: Player): void {
+    this.serverActions.kickPlayer(player.id);
   }
 
   private renderDuoSlotPicker(room: Room): void {
@@ -252,7 +307,29 @@ export class LobbyScene extends Component {
   }
 
   private chooseDuoSlot(slotIndex: 0 | 1): void {
-    if ((this.room?.gameMode ?? this.room?.settings.gameMode) !== 'duo_2v2') return;
+    const room = this.room;
+    if ((room?.gameMode ?? room?.settings.gameMode) !== 'duo_2v2') return;
+
+    // Local conflict guard — prevent sending if the character is already used
+    const localPlayer = room.players.find(p => p.clientId === this.gameManager?.localClientId || p.controllerId === this.gameManager?.localClientId) ?? room.players[0];
+    const controllerId = localPlayer?.id ?? this.gameManager?.localClientId ?? '';
+    const otherSlot = room.duoSlots?.find(s => s.controllerId === controllerId && s.slotIndex === (slotIndex === 0 ? 1 : 0));
+    const otherTeamIds = new Set<string>();
+    for (const slot of room.duoSlots ?? []) {
+      if (slot.characterId && slot.controllerId !== controllerId) {
+        otherTeamIds.add(slot.characterId);
+      }
+    }
+
+    const crossesOwnSlot = otherSlot?.characterId && otherSlot.characterId === this.selectedCharacterId;
+    const takenByOtherTeam = otherTeamIds.has(this.selectedCharacterId);
+
+    if (crossesOwnSlot || takenByOtherTeam) {
+      const reason = crossesOwnSlot ? 'Same character in both slots' : 'Character already taken by other team';
+      this.gameManager?.showToast(reason, 2.5);
+      return;
+    }
+
     this.serverActions.chooseDuoSlotCharacter(slotIndex, this.selectedCharacterId);
     this.serverActions.chooseDuoSlotSummonerSkill(slotIndex, this.selectedSummonerSkillId);
   }
@@ -302,34 +379,49 @@ export class LobbyScene extends Component {
       this.roomSettingsPanel = node.getComponent(RoomSettingsPanel) ?? node.addComponent(RoomSettingsPanel);
       this.roomSettingsPanel.setHandlers(
         (maxPlayers) => this.serverActions.updateRoomSettings({ maxPlayers }),
-        (allowDuplicateCharacters) => this.serverActions.updateRoomSettings({ allowDuplicateCharacters })
+        (allowDuplicateCharacters) => this.serverActions.updateRoomSettings({ allowDuplicateCharacters }),
+        (gameMode) => this.serverActions.updateRoomSettings({ gameMode } as Partial<Room['settings']>),
+        () => this.showModeInfo(),
       );
     }
     this.roomSettingsPanel.render(room, this.gameManager?.localClientId ?? '', this.fixedMaxPlayers);
   }
 
   private showCharacterDetail(characterId: CharacterId): void {
-    if (!this.characterDetailDialogPrefab) return;
     const character = characterList.find((item) => item.id === characterId);
     if (!character) return;
-    if (!this.characterDetailDialog?.node?.isValid) {
-      const node = this.instantiatePrefab(this.characterDetailDialogPrefab, 'CharacterDetailDialog', 0, 20, 620, 420, this.node);
-      node.setSiblingIndex(this.node.children.length - 1);
-      this.characterDetailDialog = node.getComponent(CharacterDetailDialog) ?? node.addComponent(CharacterDetailDialog);
+
+    // Use CharacterDetailDialog prefab if bound, otherwise fallback to InfoDialog
+    if (this.characterDetailDialogPrefab) {
+      if (!this.characterDetailDialog?.node?.isValid) {
+        const node = this.instantiatePrefab(this.characterDetailDialogPrefab, 'CharacterDetailDialog', 0, 20, 620, 420, this.node);
+        node.setSiblingIndex(this.node.children.length - 1);
+        this.characterDetailDialog = node.getComponent(CharacterDetailDialog) ?? node.addComponent(CharacterDetailDialog);
+      }
+      this.characterDetailDialog.render(character);
+      this.characterDetailDialog.node.setSiblingIndex(this.node.children.length - 1);
+    } else {
+      this.showInfo(characterName(characterId), characterDescription(characterId));
     }
-    this.characterDetailDialog.render(character);
-    this.characterDetailDialog.node.setSiblingIndex(this.node.children.length - 1);
+  }
+
+  private showModeInfo(): void {
+    const mode = this.room?.gameMode ?? this.room?.settings.gameMode ?? 'classic';
+    this.showInfo(`Mode: ${mode}`, gameModeDescription(mode));
   }
 
   private showSummonerSkillDetail(skillId: SummonerSkillId): void {
-    if (!this.summonerSkillDetailDialogPrefab) return;
-    if (!this.summonerSkillDetailDialog?.node?.isValid) {
-      const node = this.instantiatePrefab(this.summonerSkillDetailDialogPrefab, 'SummonerSkillDetailDialog', 0, 20, 540, 320, this.node);
-      node.setSiblingIndex(this.node.children.length - 1);
-      this.summonerSkillDetailDialog = node.getComponent(SummonerSkillDetailDialog) ?? node.addComponent(SummonerSkillDetailDialog);
+    if (this.summonerSkillDetailDialogPrefab) {
+      if (!this.summonerSkillDetailDialog?.node?.isValid) {
+        const node = this.instantiatePrefab(this.summonerSkillDetailDialogPrefab, 'SummonerSkillDetailDialog', 0, 20, 540, 320, this.node);
+        node.setSiblingIndex(this.node.children.length - 1);
+        this.summonerSkillDetailDialog = node.getComponent(SummonerSkillDetailDialog) ?? node.addComponent(SummonerSkillDetailDialog);
+      }
+      this.summonerSkillDetailDialog.render(skillId);
+      this.summonerSkillDetailDialog.node.setSiblingIndex(this.node.children.length - 1);
+    } else {
+      this.showInfo(summonerSkillName(skillId), summonerSkillDescription(skillId));
     }
-    this.summonerSkillDetailDialog.render(skillId);
-    this.summonerSkillDetailDialog.node.setSiblingIndex(this.node.children.length - 1);
   }
 
   private getVisibleCharacters(room: Room): Character[] {

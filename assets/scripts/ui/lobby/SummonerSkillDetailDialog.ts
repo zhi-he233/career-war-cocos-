@@ -1,30 +1,15 @@
 import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
-import { summonerSkillName } from '../../core/DisplayText';
+import { summonerSkillName, summonerSkillDescription } from '../../core/DisplayText';
 import type { SummonerSkillId } from '../../shared/types';
 
 const { ccclass, property } = _decorator;
 
-const SUMMONER_SKILL_DETAILS: Record<SummonerSkillId, { cooldown: string; description: string }> = {
-  lucky_plus_one: {
-    cooldown: 'Cooldown 2',
-    description: 'Increase the current roll by 1, up to 6. Best for reaching key skill numbers.',
-  },
-  first_aid: {
-    cooldown: 'Cooldown 3',
-    description: 'Convert this action into healing yourself by the current roll amount.',
-  },
-  iron_wall: {
-    cooldown: 'Cooldown 3',
-    description: 'Convert this action into gaining shield equal to the current roll.',
-  },
-  fate_reroll: {
-    cooldown: 'Cooldown 3',
-    description: 'Reroll once and accept the new result.',
-  },
-  last_stand: {
-    cooldown: 'Cooldown 3',
-    description: 'Emergency comeback skill. Use when low HP or under pressure.',
-  },
+const SUMMONER_SKILL_COOLDOWNS: Record<SummonerSkillId, string> = {
+  lucky_plus_one: 'Cooldown 2 turns',
+  first_aid: 'Cooldown 3 turns',
+  iron_wall: 'Cooldown 3 turns',
+  fate_reroll: 'Cooldown 3 turns',
+  last_stand: 'Cooldown 3 turns',
 };
 
 @ccclass('SummonerSkillDetailDialog')
@@ -56,10 +41,9 @@ export class SummonerSkillDetailDialog extends Component {
 
   render(skillId: SummonerSkillId): void {
     this.node.active = true;
-    const detail = SUMMONER_SKILL_DETAILS[skillId];
     if (this.titleLabel) this.titleLabel.string = summonerSkillName(skillId);
-    if (this.cooldownLabel) this.cooldownLabel.string = detail.cooldown;
-    if (this.descriptionLabel) this.descriptionLabel.string = detail.description;
+    if (this.cooldownLabel) this.cooldownLabel.string = SUMMONER_SKILL_COOLDOWNS[skillId] ?? '';
+    if (this.descriptionLabel) this.descriptionLabel.string = summonerSkillDescription(skillId);
   }
 
   close(): void {

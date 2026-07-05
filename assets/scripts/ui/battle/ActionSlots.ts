@@ -1,11 +1,15 @@
 import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3 } from 'cc';
-import { GameManager } from '../../core/GameManager';
-import { ServerActions } from '../../core/ServerActions';
 import { canResolveDecision } from '../../helpers/BattlePlayerHelpers';
-import type { RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../../shared/types';
+import type { RollActionType, RollDecisionAvailableAction, Room } from '../../shared/types';
 
 const { ccclass, property } = _decorator;
 
+/**
+ * ActionSlots — displays action buttons after a dice roll.
+ *
+ * Does NOT send protocol directly. Calls onConfirm(actionType, selfDamageAmount)
+ * so the owning scene (BattleScene) can apply locks, emit, and handle errors.
+ */
 @ccclass('ActionSlots')
 export class ActionSlots extends Component {
   @property({ type: Button })
@@ -23,6 +27,18 @@ export class ActionSlots extends Component {
   @property({ type: Label })
   selfDamageLabel: Label | null = null;
 
+  @property
+  selfDestructAmount = 1;
+
+  @property({ type: Button })
+  selfDamageUpButton: Button | null = null;
+
+  @property({ type: Button })
+  selfDamageDownButton: Button | null = null;
+
+  @property({ type: Label })
+  selfDamageAmountLabel: Label | null = null;
+
   @property({ type: SpriteFrame })
   attackFrame: SpriteFrame | null = null;
 
@@ -35,34 +51,37 @@ export class ActionSlots extends Component {
   @property({ type: SpriteFrame })
   disabledFrame: SpriteFrame | null = null;
 
-  private gameManager: GameManager | null = null;
-  private serverActions!: ServerActions;
+  /** Called when the user confirms an action. BattleScene MUST set this. */
+  onConfirm: ((actionType: RollActionType, selfDamageAmount: number) => void) | null = null;
+
   private room: Room | null = null;
-  private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
+  private resolveClientId = '';
 
   onLoad(): void {
     this.ensureMinimalUi();
-    this.gameManager = GameManager.getInstance();
-    this.serverActions = new ServerActions(this.gameManager);
-    this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.attackButton?.node.on(Button.EventType.CLICK, () => this.confirm('normal_attack'), this);
     this.characterSkillButton?.node.on(Button.EventType.CLICK, () => this.confirm('character_skill'), this);
     this.summonerSkillButton?.node.on(Button.EventType.CLICK, () => this.confirm('summoner_skill'), this);
-    const room = this.gameManager.getRoom();
-    if (room) this.render(room);
+    this.selfDamageUpButton?.node.on(Button.EventType.CLICK, () => this.adjustSelfDamage(1), this);
+    this.selfDamageDownButton?.node.on(Button.EventType.CLICK, () => this.adjustSelfDamage(-1), this);
   }
 
   onDestroy(): void {
-    this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.attackButton?.node.off(Button.EventType.CLICK);
     this.characterSkillButton?.node.off(Button.EventType.CLICK);
     this.summonerSkillButton?.node.off(Button.EventType.CLICK);
+    this.selfDamageUpButton?.node.off(Button.EventType.CLICK);
+    this.selfDamageDownButton?.node.off(Button.EventType.CLICK);
+    this.onConfirm = null;
   }
 
-  render(room: Room): void {
+  /** Called by BattleScene to push room state and client ID. */
+  render(room: Room, clientId: string): void {
     this.room = room;
+    this.resolveClientId = clientId;
+
     const actions = this.getActions(room);
-    const canAct = canResolveDecision(room, this.gameManager?.localClientId ?? '');
+    const canAct = canResolveDecision(room, clientId);
     this.updateButton(this.attackButton, actions, 'normal_attack', canAct);
     this.updateButton(this.characterSkillButton, actions, 'character_skill', canAct);
     this.updateButton(this.summonerSkillButton, actions, 'summoner_skill', canAct);
@@ -70,9 +89,26 @@ export class ActionSlots extends Component {
     if (this.hintLabel) {
       this.hintLabel.string = room.pendingRollDecision ? `Roll ${room.pendingRollDecision.currentRoll}: choose action` : 'Roll first';
     }
+
+    // Self-destruct amount selector
+    const risky = actions.find(a => a.requiresSelfDamageAmount);
+    const showSelfDamage = !!risky;
+    if (showSelfDamage) {
+      const actorId = room.pendingRollDecision?.actorId;
+      const actor = actorId ? room.players.find(p => p.id === actorId) : null;
+      const maxAmount = Math.min(9, actor?.hp ?? 9);
+      this.selfDestructAmount = Math.max(1, Math.min(this.selfDestructAmount, maxAmount));
+    }
     if (this.selfDamageLabel) {
-      const risky = actions.find((action) => action.requiresSelfDamageAmount);
-      this.selfDamageLabel.string = risky ? 'Self damage required: choose amount later' : '';
+      this.selfDamageLabel.string = showSelfDamage
+        ? `Self destruct: lose ${this.selfDestructAmount} HP, deal ${this.selfDestructAmount * 2} damage`
+        : '';
+    }
+    if (this.selfDamageUpButton) this.selfDamageUpButton.node.active = showSelfDamage;
+    if (this.selfDamageDownButton) this.selfDamageDownButton.node.active = showSelfDamage;
+    if (this.selfDamageAmountLabel) {
+      this.selfDamageAmountLabel.string = showSelfDamage ? String(this.selfDestructAmount) : '';
+      this.selfDamageAmountLabel.node.active = showSelfDamage;
     }
   }
 
@@ -80,16 +116,12 @@ export class ActionSlots extends Component {
     const decision = room.pendingRollDecision;
     if (!decision) return [];
     if (decision.availableActions?.length) return decision.availableActions;
-    return [{
-      id: 'normal_attack',
-      label: 'Attack',
-      enabled: true,
-    } as RollDecisionAvailableAction];
+    return [{ id: 'normal_attack', label: 'Attack', enabled: true } as RollDecisionAvailableAction];
   }
 
   private updateButton(button: Button | null, actions: RollDecisionAvailableAction[], id: RollActionType, canAct: boolean): void {
     if (!button) return;
-    const action = actions.find((item) => item.id === id);
+    const action = actions.find(item => item.id === id);
     button.node.active = Boolean(action);
     const enabled = action?.enabled === true && canAct;
     button.interactable = enabled;
@@ -107,22 +139,22 @@ export class ActionSlots extends Component {
   }
 
   private confirm(actionType: RollActionType): void {
-    const decision = this.room?.pendingRollDecision;
-    if (!this.room || !decision || !canResolveDecision(this.room, this.gameManager?.localClientId ?? '')) return;
+    if (!this.room || !this.onConfirm) return;
+    const decision = this.room.pendingRollDecision;
+    if (!decision || !canResolveDecision(this.room, this.resolveClientId)) return;
 
-    const action = this.getActions(this.room).find((item) => item.id === actionType);
+    const action = this.getActions(this.room).find(item => item.id === actionType);
     if (action?.enabled === false) return;
 
-    this.serverActions.confirmRollDecision({
-      roomId: this.room.id,
-      pendingDecisionId: decision.id,
-      decisionId: decision.id,
-      actionType,
-      choice: actionType as RollDecisionChoice,
-      skillId: action?.skillId,
-      summonerSkillId: actionType === 'summoner_skill' ? action?.skillId as SummonerSkillId : undefined,
-      selfDamageAmount: action?.requiresSelfDamageAmount ? 1 : undefined,
-    });
+    this.onConfirm(actionType, this.selfDestructAmount);
+  }
+
+  private adjustSelfDamage(delta: number): void {
+    const actorId = this.room?.pendingRollDecision?.actorId;
+    const actor = actorId ? this.room?.players.find(p => p.id === actorId) : null;
+    const maxAmount = Math.min(9, actor?.hp ?? 9);
+    this.selfDestructAmount = Math.max(1, Math.min(maxAmount, this.selfDestructAmount + delta));
+    if (this.selfDamageAmountLabel) this.selfDamageAmountLabel.string = String(this.selfDestructAmount);
   }
 
   private ensureMinimalUi(): void {
@@ -135,7 +167,13 @@ export class ActionSlots extends Component {
     this.attackButton ??= this.ensureButton('AttackButton', 'Attack', -225, -15, 200, 58, 18);
     this.characterSkillButton ??= this.ensureButton('CharacterSkillButton', 'Skill', 0, -15, 200, 58, 18);
     this.summonerSkillButton ??= this.ensureButton('SummonerSkillButton', 'Summoner', 225, -15, 200, 58, 18);
-    this.selfDamageLabel ??= this.ensureLabel('SelfDamageLabel', 0, -62, 640, 24, 14);
+    this.selfDamageLabel ??= this.ensureLabel('SelfDamageLabel', 0, -52, 560, 24, 14);
+    this.selfDamageDownButton ??= this.ensureButton('SelfDamageDown', '-', 110, -78, 42, 32, 16);
+    this.selfDamageDownButton.node.active = false;
+    this.selfDamageAmountLabel ??= this.ensureLabel('SelfDamageAmount', 160, -78, 38, 32, 18);
+    this.selfDamageAmountLabel.node.active = false;
+    this.selfDamageUpButton ??= this.ensureButton('SelfDamageUp', '+', 210, -78, 42, 32, 16);
+    this.selfDamageUpButton.node.active = false;
   }
 
   private frameForAction(id: RollActionType, enabled: boolean): SpriteFrame | null {

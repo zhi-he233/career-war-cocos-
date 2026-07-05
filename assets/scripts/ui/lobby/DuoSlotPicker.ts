@@ -53,11 +53,34 @@ export class DuoSlotPicker extends Component {
     const slot0 = room.duoSlots?.find((slot) => slot.controllerId === controllerId && slot.slotIndex === 0);
     const slot1 = room.duoSlots?.find((slot) => slot.controllerId === controllerId && slot.slotIndex === 1);
 
+    // Detect conflicts: characters already used by other teams, or by the other slot
+    const occupiedIds = new Set<CharacterId>();
+    for (const slot of room.duoSlots ?? []) {
+      if (slot.characterId && slot.controllerId !== controllerId) {
+        occupiedIds.add(slot.characterId);
+      }
+    }
+    // Cross-slot conflict: the OTHER slot's character
+    const slotConflict0 = slot1?.characterId && slot1.characterId === selectedCharacterId;
+    const slotConflict1 = slot0?.characterId && slot0.characterId === selectedCharacterId;
+    const globalConflict = occupiedIds.has(selectedCharacterId);
+
     if (this.titleLabel) this.titleLabel.string = '2V2 Slots';
-    if (this.slot0Label) this.slot0Label.string = this.slotText(1, slot0?.characterId, slot0?.summonerSkillId);
-    if (this.slot1Label) this.slot1Label.string = this.slotText(2, slot1?.characterId, slot1?.summonerSkillId);
+    if (this.slot0Label) {
+      const warn0 = slotConflict0 || globalConflict ? ' ⚠' : '';
+      this.slot0Label.string = this.slotText(1, slot0?.characterId, slot0?.summonerSkillId) + warn0;
+    }
+    if (this.slot1Label) {
+      const warn1 = slotConflict1 || globalConflict ? ' ⚠' : '';
+      this.slot1Label.string = this.slotText(2, slot1?.characterId, slot1?.summonerSkillId) + warn1;
+    }
     if (this.hintLabel) {
-      this.hintLabel.string = `Tap a slot to set: ${characterName(selectedCharacterId)} / ${summonerSkillName(selectedSummonerSkillId)}`;
+      const conflictMsg = slotConflict0 || slotConflict1
+        ? '⚠ Same character in both slots!'
+        : globalConflict
+          ? '⚠ Character already taken by another team'
+          : '';
+      this.hintLabel.string = conflictMsg || `Tap a slot to set: ${characterName(selectedCharacterId)} / ${summonerSkillName(selectedSummonerSkillId)}`;
     }
   }
 

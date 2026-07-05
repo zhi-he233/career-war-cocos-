@@ -82,7 +82,7 @@ export class RogueliteStatusPanel extends Component {
     });
     this.renderBuffIcons(rewards.slice(-4).map((reward) => ({
       id: reward.id,
-      label: titleFromId(reward.type).slice(0, 8),
+      label: reward.name || titleFromId(reward.type).slice(0, 8),
       count: reward.value > 1 ? reward.value : 1,
     })));
   }

@@ -2,6 +2,8 @@ import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame,
 
 const { ccclass, property } = _decorator;
 
+export type RogueliteMapNodeStatus = 'current' | 'available' | 'locked' | 'cleared' | 'preview';
+
 @ccclass('RogueliteMapNode')
 export class RogueliteMapNode extends Component {
   @property({ type: Label })
@@ -17,25 +19,23 @@ export class RogueliteMapNode extends Component {
   typeFrames: SpriteFrame[] = [];
 
   nodeId = '';
+  status: RogueliteMapNodeStatus = 'available';
 
   onLoad(): void {
     this.ensureMinimalUi();
   }
 
-  render(id: string, title: string, type: string, status: 'current' | 'available' | 'locked' | 'cleared' | 'preview' = 'available'): void {
+  render(id: string, title: string, type: string, status: RogueliteMapNodeStatus = 'available'): void {
     this.nodeId = id;
+    this.status = status;
     if (this.iconLabel) this.iconLabel.string = this.iconForType(type);
     if (this.titleLabel) this.titleLabel.string = title;
-    if (this.statusLabel) this.statusLabel.string = status.toUpperCase();
+    if (this.statusLabel) this.statusLabel.string = this.labelForStatus(status);
 
     const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);
     sprite.spriteFrame = this.typeFrames[this.frameIndexForType(type)] ?? this.typeFrames[0] ?? null;
     sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    sprite.color = status === 'locked'
-      ? new Color(120, 120, 120, 210)
-      : status === 'current'
-        ? new Color(255, 232, 150, 255)
-        : new Color(255, 255, 255, 255);
+    sprite.color = this.colorForTypeAndStatus(type, status);
   }
 
   private iconForType(type: string): string {
@@ -54,6 +54,28 @@ export class RogueliteMapNode extends Component {
     if (type === 'rest') return 1;
     if (type === 'event') return 2;
     return 0;
+  }
+
+  private labelForStatus(status: RogueliteMapNodeStatus): string {
+    if (status === 'available') return 'CHOOSE';
+    if (status === 'cleared') return 'CLEARED';
+    if (status === 'current') return 'CURRENT';
+    if (status === 'preview') return 'NEXT';
+    return 'LOCKED';
+  }
+
+  private colorForTypeAndStatus(type: string, status: RogueliteMapNodeStatus): Color {
+    if (status === 'locked') return new Color(110, 110, 110, 190);
+    if (status === 'cleared') return new Color(155, 210, 155, 230);
+    if (status === 'current') return new Color(255, 232, 150, 255);
+    if (status === 'preview') return new Color(185, 190, 205, 210);
+    if (type === 'boss') return new Color(235, 160, 215, 255);
+    if (type === 'elite') return new Color(245, 178, 135, 255);
+    if (type === 'shop') return new Color(245, 218, 135, 255);
+    if (type === 'rest') return new Color(180, 228, 170, 255);
+    if (type === 'event') return new Color(165, 205, 245, 255);
+    if (type === 'reward') return new Color(255, 226, 140, 255);
+    return new Color(255, 255, 255, 255);
   }
 
   private ensureMinimalUi(): void {

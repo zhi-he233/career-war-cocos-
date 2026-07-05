@@ -13,6 +13,7 @@ import { RematchPanel } from '../ui/battle/RematchPanel';
 import { SelfPanel } from '../ui/battle/SelfPanel';
 import { RogueliteStatusCompact } from '../ui/roguelite/RogueliteStatusCompact';
 import { ToastLayer } from '../ui/system/ToastLayer';
+import { InfoDialog } from '../ui/system/InfoDialog';
 import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
@@ -101,6 +102,9 @@ export class BattleScene extends Component {
   toastLayerPrefab: Prefab | null = null;
 
   @property({ type: Prefab })
+  infoDialogPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
   rogueliteStatusCompactPrefab: Prefab | null = null;
 
   @property({ type: Prefab })
@@ -132,9 +136,12 @@ export class BattleScene extends Component {
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
+  private infoDialog: InfoDialog | null = null;
   private room: Room | null = null;
   private prevRoom: Room | null = null;
   private statusText = '';
+  private pendingAction = false;
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -154,6 +161,7 @@ export class BattleScene extends Component {
   }
 
   onDestroy(): void {
+    this.clearPendingLock();
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.off(Button.EventType.CLICK, this.rollDice, this);
@@ -170,12 +178,17 @@ export class BattleScene extends Component {
     this.prevRoom = room;
     this.room = room;
 
+    // Clear pending action lock when server state changes
+    if (this.pendingAction && !room.pendingRollDecision && !room.pendingGuardCheck) {
+      this.clearPendingLock();
+    }
+
     // Drive DicePanel display + animation
     if (this.dicePanel) {
       this.dicePanel.render(room);
     }
     if (this.actionSlots) {
-      this.actionSlots.render(room);
+      this.actionSlots.render(room, this.gameManager?.localClientId ?? '');
     }
     if (this.battleLog) {
       this.battleLog.render(room);
@@ -221,14 +234,11 @@ export class BattleScene extends Component {
     }
 
     if (this.rollButton) {
-      this.rollButton.node.active = room.phase === 'battle' && !decision;
-      this.rollButton.interactable = this.canLocalAct(room);
+      this.rollButton.node.active = room.phase === 'battle' && !decision && !this.pendingAction;
+      this.rollButton.interactable = (this.canLocalAct(room) || this.canLocalGuardCheck(room)) && !this.pendingAction;
     }
 
     this.renderTargets(room);
-    if (!this.actionSlots) {
-      this.renderActions(room);
-    }
   }
 
   private renderTargets(room: Room): void {
@@ -254,59 +264,37 @@ export class BattleScene extends Component {
     });
   }
 
-  private renderActions(room: Room): void {
-    if (!this.actionListNode) return;
-    this.clearChildren(this.actionListNode);
-
-    const decision = room.pendingRollDecision;
-    const actions = decision?.availableActions ?? [];
-    if (!decision) {
-      this.ensureActionHint('Roll first to reveal action choices.');
-      return;
-    }
-
-    if (actions.length === 0) {
-      const button = this.createButton('Action_normal_attack', 'Attack', 0, 0, 220, 58, 20, this.actionListNode);
-      button.interactable = this.canResolveDecision(room);
-      button.node.on(Button.EventType.CLICK, () => this.confirmAction('normal_attack'), this);
-      return;
-    }
-
-    actions.forEach((action, index) => {
-      const button = this.createButton(
-        `Action_${action.id}_${index}`,
-        `${action.label || action.id}\n${action.enabled ? '' : action.reason ?? 'disabled'}`,
-        -220 + index * 220,
-        0,
-        205,
-        64,
-        15,
-        this.actionListNode!
-      );
-      button.interactable = action.enabled === true && this.canResolveDecision(room);
-      button.node.on(Button.EventType.CLICK, () => this.confirmAction(action.id, action), this);
-    });
-  }
-
-  private ensureActionHint(text: string): void {
-    const label = this.ensureLabel('ActionHint', 0, 0, 650, 44, 18, this.actionListNode ?? this.node);
-    label.string = text;
-  }
-
   private renderStatus(status: string): void {
     this.statusText = status;
     if (this.room) this.render(this.room);
   }
 
   private selectTarget(targetId: string): void {
-    if (!this.room || !this.canLocalAct(this.room)) return;
+    if (!this.room || !this.canLocalAct(this.room) || this.pendingAction) return;
     this.serverActions.selectTarget(targetId);
   }
 
   private rollDice(): void {
+    if (this.pendingAction) return;
     const room = this.room;
-    const actor = room ? this.getActor(room) : null;
-    if (!room || !actor || room.pendingRollDecision || !this.canLocalAct(room)) return;
+    if (!room || room.pendingRollDecision) return;
+
+    const clientId = this.gameManager?.localClientId ?? '';
+
+    // Guard check: use pendingGuardCheck.actorId directly, not getActor()
+    if (room.pendingGuardCheck) {
+      const guardActorId = room.pendingGuardCheck.actorId;
+      const guardActor = room.players.find(p => p.id === guardActorId);
+      if (guardActor && (guardActor.clientId === clientId || guardActor.controllerId === clientId)) {
+        this.setPendingLock();
+        this.dicePanel?.startRoll('guard');
+        this.serverActions.rollGuardCheck();
+        return;
+      }
+    }
+
+    const actor = this.getActor(room);
+    if (!actor || !this.canLocalAct(room)) return;
 
     const target = actor.selectedTargetId
       ? room.players.find((player) => player.id === actor.selectedTargetId && this.canTarget(actor, player))
@@ -314,8 +302,9 @@ export class BattleScene extends Component {
 
     if (!target) return;
 
-    // Start dice roll animation
-    this.dicePanel?.startRoll(room.pendingGuardCheck ? 'guard' : 'normal');
+    // All validations passed — lock and emit
+    this.setPendingLock();
+    this.dicePanel?.startRoll('normal');
 
     const emitRoll = () => this.serverActions.rollDice();
     if (actor.selectedTargetId === target.id) {
@@ -326,10 +315,27 @@ export class BattleScene extends Component {
     this.serverActions.selectTarget(target.id, () => emitRoll());
   }
 
-  private confirmAction(actionType: RollActionType, action?: RollDecisionAvailableAction): void {
-    const decision = this.room?.pendingRollDecision;
-    if (!this.room || !decision || !this.canResolveDecision(this.room)) return;
+  /** Lock UI actions while waiting for server ack. Cleared on next room update or 10s timeout. */
+  private setPendingLock(): void {
+    this.pendingAction = true;
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = setTimeout(() => this.clearPendingLock(), 10000);
+  }
 
+  private clearPendingLock(): void {
+    this.pendingAction = false;
+    if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null; }
+  }
+
+  /** Unified action confirm — called by ActionSlots.onConfirm. Owns lock/emit/unlock. */
+  private handleActionConfirm(actionType: RollActionType, selfDamageAmount: number): void {
+    const decision = this.room?.pendingRollDecision;
+    if (!this.room || !decision || !this.canResolveDecision(this.room) || this.pendingAction) return;
+
+    const action = (decision.availableActions ?? []).find(a => a.id === actionType);
+    if (action?.enabled === false) return;
+
+    this.setPendingLock();
     this.serverActions.confirmRollDecision({
       roomId: this.room.id,
       pendingDecisionId: decision.id,
@@ -338,8 +344,21 @@ export class BattleScene extends Component {
       choice: actionType as RollDecisionChoice,
       skillId: action?.skillId,
       summonerSkillId: actionType === 'summoner_skill' ? action?.skillId as SummonerSkillId : undefined,
-      selfDamageAmount: action?.requiresSelfDamageAmount ? 1 : undefined,
+      selfDamageAmount: action?.requiresSelfDamageAmount ? selfDamageAmount : undefined,
     });
+  }
+
+  showInfo(title: string, body: string): void {
+    if (this.infoDialogPrefab && !this.infoDialog?.node?.isValid) {
+      const node = this.ensurePrefabNode('InfoDialog', this.infoDialogPrefab, 0, 20, 520, 440, this.node);
+      node.setSiblingIndex(998);
+      this.infoDialog = node.getComponent(InfoDialog) ?? node.addComponent(InfoDialog);
+    }
+    if (this.infoDialog) {
+      this.infoDialog.show(title, body);
+    } else {
+      this.gameManager?.showToast(body.slice(0, 120), 3);
+    }
   }
 
   private openBattleLogDrawer(): void {
@@ -348,13 +367,26 @@ export class BattleScene extends Component {
   }
 
   private openLocalPlayerDetail(): void {
-    if (!this.room || !this.playerDetailDialog) return;
+    if (!this.room) return;
     const player = this.gameManager?.getLocalPlayer()
       ?? this.getActor(this.room)
       ?? this.room.players.find((item) => !item.isBot)
       ?? this.room.players[0];
     if (!player) return;
-    this.playerDetailDialog.open(player.id, this.room);
+    // Use PlayerDetailDialog if available, otherwise fallback to InfoDialog
+    if (this.playerDetailDialog) {
+      this.playerDetailDialog.open(player.id, this.room);
+    } else {
+      const charName = characterName(player.characterId);
+      const skillName = summonerSkillName(player.summonerSkillId);
+      const body = [
+        `HP ${player.hp}/${player.maxHp}  Shield ${player.shield}`,
+        `Character: ${charName}`,
+        `Summoner Skill: ${skillName}`,
+        player.isDead ? 'Status: Dead' : `Status: ${player.isOnline === false ? 'Offline' : 'Active'}`,
+      ].join('\n');
+      this.showInfo(player.nickname, body);
+    }
   }
 
   private playerLine(room: Room, player: Player, index: number): string {
@@ -368,6 +400,13 @@ export class BattleScene extends Component {
 
   private canLocalAct(room: Room): boolean {
     return canLocalAct(room, this.gameManager?.localClientId ?? '');
+  }
+
+  private canLocalGuardCheck(room: Room): boolean {
+    if (!room.pendingGuardCheck) return false;
+    const clientId = this.gameManager?.localClientId ?? '';
+    const actor = room.players.find(p => p.id === room.pendingGuardCheck!.actorId);
+    return !!actor && (actor.clientId === clientId || actor.controllerId === clientId);
   }
 
   private canResolveDecision(room: Room): boolean {
@@ -422,6 +461,7 @@ export class BattleScene extends Component {
     this.actionSlots.attackFrame = this.attackFrame ?? this.actionFrame;
     this.actionSlots.skillFrame = this.skillFrame ?? this.actionFrame;
     this.actionSlots.summonerFrame = this.actionFrame ?? this.skillFrame;
+    this.actionSlots.onConfirm = (actionType, selfDamageAmount) => this.handleActionConfirm(actionType, selfDamageAmount);
 
     const selfPanelNode = this.ensurePrefabNode('SelfPanel', this.selfPanelPrefab, 0, -335, 620, 150, this.node);
     this.selfPanel ??= selfPanelNode.getComponent(SelfPanel) ?? selfPanelNode.addComponent(SelfPanel);

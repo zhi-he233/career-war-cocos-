@@ -296,8 +296,6 @@
     "_enabled": true,
     "__prefab": null,
     "titleLabel": null,
-    "summaryLabel": null,
-    "roomLabel": null,
     "backButton": null,
     "_id": "Profile_bc3585d5_185c-a3b",
     "parchmentFrame": {
@@ -311,6 +309,11 @@
     "statusFrame": {
       "__uuid__": "2a28e099-bfc1-4964-8a0c-bad7648591a8@f9941",
       "__expectedType__": "cc.SpriteFrame"
+    },
+    "profilePanel": null,
+    "profilePanelPrefab": {
+      "__uuid__": "f7ac49dc-79d4-4508-8727-fcf8cc858f0b",
+      "__expectedType__": "cc.Prefab"
     }
   },
   {

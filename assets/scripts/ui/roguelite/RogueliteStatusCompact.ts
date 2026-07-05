@@ -56,7 +56,7 @@ export class RogueliteStatusCompact extends Component {
 
     this.renderBuffIcons((run?.appliedRewards ?? []).slice(-3).map((reward) => ({
       id: reward.id,
-      label: titleFromId(reward.type).slice(0, 7),
+      label: reward.name || titleFromId(reward.type).slice(0, 7),
       count: reward.value > 1 ? reward.value : 1,
     })));
   }

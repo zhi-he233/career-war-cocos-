@@ -4,8 +4,10 @@ import { ServerActions } from '../core/ServerActions';
 import { titleFromId } from '../core/DisplayText';
 import { EventChoiceCard } from '../ui/roguelite/EventChoiceCard';
 import { RewardCard } from '../ui/roguelite/RewardCard';
+import type { RewardCardState } from '../ui/roguelite/RewardCard';
 import { RogueliteEventHeader } from '../ui/roguelite/RogueliteEventHeader';
 import { RogueliteMapNode } from '../ui/roguelite/RogueliteMapNode';
+import type { RogueliteMapNodeStatus } from '../ui/roguelite/RogueliteMapNode';
 import { RogueliteStatusPanel } from '../ui/roguelite/RogueliteStatusPanel';
 import { ShopItemCard } from '../ui/roguelite/ShopItemCard';
 import { ShopControlBar } from '../ui/roguelite/ShopControlBar';
@@ -85,6 +87,8 @@ export class RogueliteScene extends Component {
   private serverActions!: ServerActions;
   private room: Room | null = null;
   private statusText = '';
+  private pendingRewardId = '';
+  private pendingRouteNodeId = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -106,6 +110,8 @@ export class RogueliteScene extends Component {
 
   private render(room: Room): void {
     this.room = room;
+    this.syncPendingReward(room);
+    this.syncPendingRoute(room);
     const run = room.roguelite;
     this.rogueliteStatusPanel?.render(room);
 
@@ -149,6 +155,8 @@ export class RogueliteScene extends Component {
       }
 
       rewards.forEach((reward, index) => {
+        const selected = this.pendingRewardId === reward.id;
+        const state: RewardCardState = selected ? 'selected' : this.pendingRewardId ? 'disabled' : 'available';
         if (this.rewardCardPrefab) {
           const node = this.createRewardCard(
             this.rewardCardPrefab,
@@ -159,9 +167,12 @@ export class RogueliteScene extends Component {
             titleFromId(reward.type),
             titleFromId(reward.id),
             reward.description ?? '',
-            index
+            index,
+            state
           );
-          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteReward(reward.id), this);
+          const button = node.getComponent(Button);
+          if (button) button.interactable = !this.pendingRewardId;
+          button?.node.on(Button.EventType.CLICK, () => this.chooseReward(reward.id), this);
           return;
         }
         const button = this.createButton(
@@ -174,7 +185,9 @@ export class RogueliteScene extends Component {
           17,
           this.actionListNode!
         );
-        button.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteReward(reward.id), this);
+        button.interactable = !this.pendingRewardId;
+        this.applyRewardButtonState(button, state);
+        button.node.on(Button.EventType.CLICK, () => this.chooseReward(reward.id), this);
       });
       return;
     }
@@ -282,34 +295,26 @@ export class RogueliteScene extends Component {
 
     if (room.phase === 'roguelite_continue') {
       const nodes = this.getNextRouteNodes(room);
-      nodes.forEach((mapNode, index) => {
-        if (this.mapNodePrefab) {
-          const node = this.createMapNode(
-            this.mapNodePrefab,
+      if (this.mapNodePrefab) {
+        this.createRouteMap(this.mapNodePrefab, room, nodes);
+      } else {
+        nodes.forEach((mapNode, index) => {
+          const button = this.createButton(
             `Route_${mapNode.id}`,
-            -210 + index * 210,
-            70,
-            mapNode.id,
-            `Stage ${mapNode.stage}`,
-            mapNode.type,
-            'available'
+            `Stage ${mapNode.stage} | ${titleFromId(mapNode.type)} | ${mapNode.id}`,
+            0,
+            105 - index * 68,
+            620,
+            56,
+            17,
+            this.actionListNode!
           );
-          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
-          return;
-        }
-        const button = this.createButton(
-          `Route_${mapNode.id}`,
-          `Stage ${mapNode.stage} | ${titleFromId(mapNode.type)} | ${mapNode.id}`,
-          0,
-          105 - index * 68,
-          620,
-          56,
-          17,
-          this.actionListNode!
-        );
-        button.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
-      });
+          button.interactable = !this.pendingRouteNodeId;
+          button.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
+        });
+      }
       const finish = this.createButton('FinishRun', 'Finish Run', 0, -170, 260, 54, 20, this.actionListNode);
+      finish.interactable = !this.pendingRouteNodeId;
       finish.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteContinue('finish'), this);
       return;
     }
@@ -318,12 +323,69 @@ export class RogueliteScene extends Component {
   }
 
   private continueRoguelite(mapNode: RogueliteMapNodeSelection): void {
-    this.serverActions.chooseRogueliteContinue('continue', mapNode);
+    if (this.pendingRouteNodeId) return;
+    this.pendingRouteNodeId = mapNode.id;
+    this.gameManager?.showToast('Route selected. Waiting for server...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.chooseRogueliteContinue('continue', mapNode, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingRouteNodeId = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingRouteNodeId === mapNode.id && this.room?.phase === 'roguelite_continue') {
+        this.pendingRouteNodeId = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 6);
   }
 
   private renderStatus(status: string): void {
     this.statusText = status;
     if (this.room) this.render(this.room);
+  }
+
+  private chooseReward(rewardId: string): void {
+    if (this.pendingRewardId) return;
+    this.pendingRewardId = rewardId;
+    this.gameManager?.showToast('Reward selected. Waiting for server...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.chooseRogueliteReward(rewardId, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingRewardId = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingRewardId === rewardId && this.room?.phase === 'reward') {
+        this.pendingRewardId = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 6);
+  }
+
+  private syncPendingReward(room: Room): void {
+    if (!this.pendingRewardId) return;
+    const rewardChoices = room.roguelite?.rewardChoices ?? [];
+    const stillChoosingReward = room.phase === 'reward' && rewardChoices.some((reward) => reward.id === this.pendingRewardId);
+    if (!stillChoosingReward) this.pendingRewardId = '';
+  }
+
+  private syncPendingRoute(room: Room): void {
+    if (!this.pendingRouteNodeId) return;
+    const stillChoosingRoute = room.phase === 'roguelite_continue' && this.getNextRouteNodes(room).some((node) => node.id === this.pendingRouteNodeId);
+    if (!stillChoosingRoute) this.pendingRouteNodeId = '';
+  }
+
+  private isAckFailure(response: unknown): boolean {
+    return !!response && typeof response === 'object' && (response as { ok?: unknown }).ok === false;
   }
 
   private getNextRouteNodes(room: Room): RogueliteMapNodeSelection[] {
@@ -350,16 +412,100 @@ export class RogueliteScene extends Component {
     };
   }
 
+  private createRouteMap(prefab: Prefab, room: Room, availableNodes: RogueliteMapNodeSelection[]): void {
+    const run = room.roguelite;
+    const nextStage = Math.max(1, run?.stage ?? 1);
+    this.createText('Route', 0, 198);
+
+    const previousStage = nextStage - 1;
+    const previousId = previousStage > 0 ? run?.mapRoute?.[previousStage] ?? run?.currentMapNode?.id : '';
+    if (previousId) {
+      const previousNode = this.findMapNodeSelection(previousStage, previousId, run?.currentMapNode);
+      if (previousNode) {
+        const node = this.createMapNode(
+          prefab,
+          `Cleared_${previousNode.id}`,
+          this.mapNodeX(previousNode, 0, 1),
+          126,
+          previousNode.id,
+          `Stage ${previousNode.stage}`,
+          previousNode.type,
+          'cleared'
+        );
+        const button = node.getComponent(Button);
+        if (button) button.interactable = false;
+      }
+    }
+
+    availableNodes.forEach((mapNode, index) => {
+      const selected = this.pendingRouteNodeId === mapNode.id;
+      const status: RogueliteMapNodeStatus = selected ? 'current' : this.pendingRouteNodeId ? 'locked' : 'available';
+      const node = this.createMapNode(
+        prefab,
+        `Route_${mapNode.id}`,
+        this.mapNodeX(mapNode, index, availableNodes.length),
+        18,
+        mapNode.id,
+        `Stage ${mapNode.stage}`,
+        mapNode.type,
+        status
+      );
+      const button = node.getComponent(Button);
+      if (button) button.interactable = !this.pendingRouteNodeId;
+      button?.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
+    });
+
+    const previewLayer = createRogueliteMapLayer(nextStage + 1).slice(0, 4);
+    previewLayer.forEach((mapNode, index) => {
+      const node = this.createMapNode(
+        prefab,
+        `Preview_${mapNode.id}`,
+        this.mapNodeX(mapNode, index, previewLayer.length),
+        -92,
+        mapNode.id,
+        `Stage ${mapNode.stage}`,
+        mapNode.type,
+        'preview'
+      );
+      const button = node.getComponent(Button);
+      if (button) button.interactable = false;
+    });
+  }
+
+  private findMapNodeSelection(stage: number, id: string, fallback?: RogueliteMapNodeSelection): RogueliteMapNodeSelection | null {
+    if (fallback?.id === id) return fallback;
+    const draft = createRogueliteMapLayer(stage).find((node) => node.id === id);
+    return draft ? this.toSelection(draft) : null;
+  }
+
+  private mapNodeX(node: { id: string; stage: number }, index: number, total: number): number {
+    const draft = createRogueliteMapLayer(node.stage).find((item) => item.id === node.id);
+    if (draft) return Math.round((draft.x - 50) * 5.1);
+    if (total <= 1) return 0;
+    return Math.round(-220 + index * (440 / Math.max(1, total - 1)));
+  }
+
   private createText(text: string, x: number, y: number): Label {
     const label = this.ensureLabel(`Text_${this.actionListNode?.children.length ?? 0}`, x, y, 620, 52, 18, this.actionListNode ?? this.node);
     label.string = text;
     return label;
   }
 
-  private createRewardCard(prefab: Prefab, id: string, name: string, x: number, y: number, title: string, subtitle: string, description: string, rarityIndex: number): Node {
+  private createRewardCard(
+    prefab: Prefab,
+    id: string,
+    name: string,
+    x: number,
+    y: number,
+    title: string,
+    subtitle: string,
+    description: string,
+    rarityIndex: number,
+    state: RewardCardState = 'available'
+  ): Node {
     const node = this.instantiatePrefab(prefab, name, x, y, 620, 86, this.actionListNode ?? this.node);
     const card = node.getComponent(RewardCard) ?? node.addComponent(RewardCard);
-    card.render(id, title, subtitle, description, rarityIndex);
+    card.render(id, title, subtitle, description, rarityIndex, state === 'selected', state);
     return node;
   }
 
@@ -406,7 +552,7 @@ export class RogueliteScene extends Component {
     return node;
   }
 
-  private createMapNode(prefab: Prefab, name: string, x: number, y: number, id: string, title: string, type: string, status: 'current' | 'available' | 'locked' | 'cleared' | 'preview'): Node {
+  private createMapNode(prefab: Prefab, name: string, x: number, y: number, id: string, title: string, type: string, status: RogueliteMapNodeStatus): Node {
     const node = this.instantiatePrefab(prefab, name, x, y, 170, 92, this.actionListNode ?? this.node);
     const mapNode = node.getComponent(RogueliteMapNode) ?? node.addComponent(RogueliteMapNode);
     mapNode.render(id, title, type, status);
@@ -532,6 +678,15 @@ export class RogueliteScene extends Component {
     button.pressedSprite = frame;
     button.disabledSprite = frame;
     button.target = button.node;
+  }
+
+  private applyRewardButtonState(button: Button, state: RewardCardState): void {
+    const sprite = button.node.getComponent(Sprite);
+    if (!sprite) return;
+    if (state === 'selected') sprite.color = new Color(255, 226, 140, 255);
+    else if (state === 'disabled') sprite.color = new Color(142, 135, 122, 255);
+    else if (state === 'taken') sprite.color = new Color(186, 232, 168, 255);
+    else sprite.color = new Color(255, 255, 255, 255);
   }
 
   private clearChildren(node: Node): void {

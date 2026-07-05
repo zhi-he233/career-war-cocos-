@@ -105,7 +105,17 @@ export class BattleSeat extends Component {
     this.applyVisualState(vm);
 
     const button = this.node.getComponent(Button);
-    if (button) button.interactable = this.isSelectableTarget(room, this.player);
+    if (button) {
+      const clientId = this.gameManager?.localClientId ?? '';
+      const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
+      // In duo mode, own characters must be clickable for actor selection
+      const isDuoOwn = mode === 'duo_2v2' && this.isOwnPlayer(this.player, clientId) && canLocalAct(room, clientId);
+      button.interactable = isDuoOwn || this.isSelectableTarget(room, this.player);
+    }
+  }
+
+  private isOwnPlayer(player: Player, clientId: string): boolean {
+    return player.clientId === clientId || player.controllerId === clientId;
   }
 
   private clear(): void {
@@ -126,7 +136,16 @@ export class BattleSeat extends Component {
   private selectAsTarget(): void {
     const room = this.gameManager?.getRoom();
     if (!this.player || !room) return;
-    if (!canLocalAct(room, this.gameManager?.localClientId ?? '')) return;
+    const clientId = this.gameManager?.localClientId ?? '';
+    if (!canLocalAct(room, clientId)) return;
+
+    // Duo mode: clicking your own team member selects them as the actor
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
+    if (mode === 'duo_2v2' && this.isOwnPlayer(this.player, clientId)) {
+      this.serverActions.selectActor(this.player.id);
+      return;
+    }
+
     if (!this.isSelectableTarget(room, this.player)) return;
     this.serverActions.selectTarget(this.player.id);
   }

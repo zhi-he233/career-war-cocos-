@@ -1,25 +1,26 @@
-import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3, director, sys } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, director, instantiate, sys } from 'cc';
 import { GameManager } from '../core/GameManager';
+import { ProfileService } from '../services/ProfileService';
 import type { Room } from '../shared/types';
+import { ProfilePanel } from '../ui/profile/ProfilePanel';
 
 const { ccclass, property } = _decorator;
 
 const CLIENT_ID_KEY = 'career-war-cocos-client-id';
-const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 
 @ccclass('ProfileScene')
 export class ProfileScene extends Component {
   @property({ type: Label })
   titleLabel: Label | null = null;
 
-  @property({ type: Label })
-  summaryLabel: Label | null = null;
-
-  @property({ type: Label })
-  roomLabel: Label | null = null;
+  @property({ type: ProfilePanel })
+  profilePanel: ProfilePanel | null = null;
 
   @property({ type: Button })
   backButton: Button | null = null;
+
+  @property({ type: Prefab })
+  profilePanelPrefab: Prefab | null = null;
 
   @property({ type: SpriteFrame })
   parchmentFrame: SpriteFrame | null = null;
@@ -51,42 +52,39 @@ export class ProfileScene extends Component {
   }
 
   private render(room: Room | null): void {
-    const clientId = this.gameManager?.localClientId || sys.localStorage.getItem(CLIENT_ID_KEY) || 'unknown';
-    const nickname = this.gameManager?.localNickname || 'Player';
-    const me = this.gameManager?.getLocalPlayer();
-
-    if (this.titleLabel) {
-      this.titleLabel.string = '玩家档案';
-    }
-
-    if (this.summaryLabel) {
-      this.summaryLabel.string = [
-        `昵称：${me?.nickname ?? nickname}`,
-        `客户端 ID：${clientId}`,
-        `玩家 ID：${this.gameManager?.localPlayerId || me?.id || '未进入房间'}`,
-        '常用入口：经典 / 人机 / 肉鸽',
-        '',
-        '后续可在这里接入：胜场、常用职业、肉鸽进度、收藏徽章。',
-      ].join('\n');
-    }
-
-    if (this.roomLabel) {
-      const savedRoomId = sys.localStorage.getItem(LAST_ROOM_ID_KEY) || '无';
-      this.roomLabel.string = room
-        ? `当前房间：${room.id}\n模式：${room.gameMode ?? room.settings.gameMode}\n阶段：${room.phase}\n人数：${room.players.length}/${room.settings.maxPlayers}`
-        : `当前房间：无\n上次房间：${savedRoomId}`;
-    }
+    const profile = ProfileService.loadProfile({
+      nickname: this.gameManager?.localNickname || 'Player',
+      clientId: this.gameManager?.localClientId || sys.localStorage.getItem(CLIENT_ID_KEY) || 'unknown',
+      playerId: this.gameManager?.localPlayerId || undefined,
+      room,
+    });
+    if (this.titleLabel) this.titleLabel.string = 'Player Profile';
+    this.profilePanel?.render(profile, room);
   }
 
   private ensureMinimalUi(): void {
-    this.ensureSpriteNode('ProfileParchmentPanel', 0, 60, 650, 760, this.parchmentFrame);
-    this.ensureSpriteNode('ProfileCardPanel', 0, 240, 360, 245, this.profileCardFrame ?? this.statusFrame);
-    this.ensureSpriteNode('ProfileRoomPanel', 0, -175, 600, 160, this.statusFrame);
+    this.ensureSpriteNode('ProfileParchmentPanel', 0, 60, 660, 800, this.parchmentFrame);
+    this.titleLabel ??= this.ensureLabel('TitleLabel', 0, 520, 640, 58, 30);
 
-    this.titleLabel ??= this.ensureLabel('TitleLabel', 0, 500, 640, 72, 34);
-    this.summaryLabel ??= this.ensureLabel('SummaryLabel', 0, 205, 560, 260, 20);
-    this.roomLabel ??= this.ensureLabel('RoomLabel', 0, -175, 560, 145, 18);
-    this.backButton ??= this.createButton('BackButton', '返回首页', 0, -455, 250, 60, 22, this.node);
+    const panelNode = this.ensurePrefabNode('ProfilePanel', this.profilePanelPrefab, 0, 40, 640, 760);
+    this.profilePanel ??= panelNode.getComponent(ProfilePanel) ?? panelNode.addComponent(ProfilePanel);
+    this.profilePanel.panelFrame = this.profileCardFrame ?? this.parchmentFrame;
+    this.profilePanel.sectionFrame = this.statusFrame ?? this.profileCardFrame;
+
+    this.backButton ??= this.createButton('BackButton', 'Back', 0, -545, 250, 58, 22, this.node);
+  }
+
+  private ensurePrefabNode(name: string, prefab: Prefab | null, x: number, y: number, width: number, height: number): Node {
+    const existing = this.node.getChildByName(name);
+    if (existing) existing.destroy();
+
+    const node = prefab ? instantiate(prefab) : new Node(name);
+    node.name = name;
+    this.node.addChild(node);
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    transform.setContentSize(width, height);
+    return node;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number): Node {
