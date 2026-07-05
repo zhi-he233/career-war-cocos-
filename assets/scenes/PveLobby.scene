@@ -325,7 +325,40 @@
       "__uuid__": "2a28e099-bfc1-4964-8a0c-bad7648591a8@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
-    "_id": "d0269fe615904f4c9c079c"
+    "_id": "d0269fe615904f4c9c079c",
+    "playerListNode": null,
+    "characterCardPrefab": {
+      "__uuid__": "73605cdc-01d5-44d9-944a-89cc29ceb6cf",
+      "__expectedType__": "cc.Prefab"
+    },
+    "playerListItemPrefab": {
+      "__uuid__": "ee874c88-df74-4a11-87a1-0cf938107bc8",
+      "__expectedType__": "cc.Prefab"
+    },
+    "duoSlotPickerPrefab": {
+      "__uuid__": "d9d22a5c-8314-44d1-99ee-93f09ea58d31",
+      "__expectedType__": "cc.Prefab"
+    },
+    "characterDetailDialogPrefab": {
+      "__uuid__": "c24cda84-37fc-46e3-84b1-8465cb948fbe",
+      "__expectedType__": "cc.Prefab"
+    },
+    "summonerSkillDetailDialogPrefab": {
+      "__uuid__": "b94bf54e-f7f4-4be2-9808-a657bf4a24cf",
+      "__expectedType__": "cc.Prefab"
+    },
+    "summonerSkillCardPrefab": {
+      "__uuid__": "c0f846ba-f0fe-4ca0-8b4e-dafb7c4dc223",
+      "__expectedType__": "cc.Prefab"
+    },
+    "lobbyStartBarPrefab": {
+      "__uuid__": "a655f7e0-71e0-494b-abdb-b5e05fcdd33e",
+      "__expectedType__": "cc.Prefab"
+    },
+    "roomSettingsPanelPrefab": {
+      "__uuid__": "e148ce96-fdbe-4286-83af-eadcab0aa1b9",
+      "__expectedType__": "cc.Prefab"
+    }
   },
   {
     "__type__": "cc.SceneGlobals",

@@ -7,8 +7,10 @@ import {
   Graphics,
   Label,
   Node,
+  Prefab,
   Sprite,
   SpriteFrame,
+  instantiate,
   tween,
   UITransform,
   Vec3,
@@ -18,6 +20,8 @@ import {
 import type { GameMode, Room, RoomListItem } from '../shared/types';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
+import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
+import { ToastLayer } from '../ui/system/ToastLayer';
 
 const { ccclass, property } = _decorator;
 const CLIENT_ID_KEY = 'career-war-cocos-client-id';
@@ -69,6 +73,18 @@ export class HomeScene extends Component {
   @property({ type: [SpriteFrame] })
   diceRollFrames: SpriteFrame[] = [];
 
+  @property({ type: Prefab })
+  ruleGuidePanelPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  toastLayerPrefab: Prefab | null = null;
+
+  @property({ type: SpriteFrame })
+  overlayPanelFrame: SpriteFrame | null = null;
+
+  @property({ type: SpriteFrame })
+  overlayButtonFrame: SpriteFrame | null = null;
+
   @property
   diceRollDuration = 0.72;
 
@@ -80,6 +96,8 @@ export class HomeScene extends Component {
   private roomList: RoomListItem[] = [];
   private infoPanelNode: Node | null = null;
   private toastNode: Node | null = null;
+  private ruleGuidePanel: RuleGuidePanel | null = null;
+  private toastLayer: ToastLayer | null = null;
   private isLaunchingRoguelite = false;
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -92,6 +110,7 @@ export class HomeScene extends Component {
     this.gameManager = GameManager.getInstance();
     this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.setLocalPlayer(this.clientId, this.nickname);
+    this.ensureOverlayPrefabs();
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.joinRoomButton?.node.on(Button.EventType.CLICK, this.joinRoom, this);
     this.refreshRoomsButton?.node.on(Button.EventType.CLICK, this.requestRoomList, this);
@@ -124,13 +143,17 @@ export class HomeScene extends Component {
   }
 
   openRuleGuide(): void {
+    if (this.ruleGuidePanel) {
+      this.ruleGuidePanel.open();
+      return;
+    }
     this.showInfoPanel(
-      '规则书',
+      'Rule Guide',
       [
-        '基础流程：选择模式，进入房间，选择角色，然后开始战斗。',
-        '战斗规则：轮到你时投骰，根据骰点选择普通攻击、角色技能或召唤师技能。',
-        '结算原则：服务器负责真实结算，客户端只负责显示和发送操作。',
-        '肉鸽模式：打完一场后选择奖励，再进入下一层。',
+        'Choose a mode, enter a lobby, pick a character and summoner skill, then start battle.',
+        'On your turn, select a target and roll. The server sends the available action choices.',
+        'The server owns all real settlement. The client only displays state and sends your choices.',
+        'In roguelite, win a battle, choose a reward, then continue through event, shop, rest, or route stages.',
       ].join('\n')
     );
   }
@@ -373,6 +396,10 @@ export class HomeScene extends Component {
   }
 
   private showToast(message: string): void {
+    if (this.toastLayer) {
+      this.toastLayer.show(message, 1.2);
+      return;
+    }
     this.toastNode?.destroy();
 
     const toast = this.ensureNode('HomeToast', 0, -560, 520, 48);
@@ -406,6 +433,31 @@ export class HomeScene extends Component {
     this.refreshRoomsButton ??= this.ensureButton('RefreshRoomsButton', 'Refresh Rooms', 0, -375, 260, 44, 18);
     this.roomListNode ??= this.ensureNode('RoomList', 0, -490, 640, 150);
     this.statusLabel ??= this.ensureLabel('StatusLabel', 0, -585, 640, 80, 18);
+  }
+
+  private ensureOverlayPrefabs(): void {
+    if (this.ruleGuidePanelPrefab) {
+      const node = instantiate(this.ruleGuidePanelPrefab);
+      node.name = 'RuleGuidePanel';
+      this.node.addChild(node);
+      node.setPosition(Vec3.ZERO);
+      const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+      transform.setContentSize(620, 520);
+      this.ruleGuidePanel = node.getComponent(RuleGuidePanel) ?? node.addComponent(RuleGuidePanel);
+      this.ruleGuidePanel.panelFrame = this.overlayPanelFrame;
+      this.ruleGuidePanel.buttonFrame = this.overlayButtonFrame;
+    }
+
+    if (this.toastLayerPrefab) {
+      const node = instantiate(this.toastLayerPrefab);
+      node.name = 'ToastLayer';
+      this.node.addChild(node);
+      node.setPosition(new Vec3(0, -555, 0));
+      const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+      transform.setContentSize(560, 56);
+      this.toastLayer = node.getComponent(ToastLayer) ?? node.addComponent(ToastLayer);
+      this.toastLayer.panelFrame = this.overlayButtonFrame ?? this.overlayPanelFrame;
+    }
   }
 
   private renderRoomList(): void {

@@ -2,6 +2,7 @@ export const GameEvents = {
   RoomUpdated: 'game:room-updated',
   RoomPhaseChanged: 'game:room-phase-changed',
   StatusUpdated: 'game:status-updated',
+  ToastRequested: 'game:toast-requested',
   NetworkConnected: 'game:network-connected',
   NetworkDisconnected: 'game:network-disconnected',
   NetworkError: 'game:network-error',

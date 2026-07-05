@@ -1,13 +1,18 @@
-import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3, tween, UIOpacity } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate, tween, UIOpacity } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { characterName, summonerSkillName } from '../core/DisplayText';
 import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents, diffFloatingEffects } from '../helpers/BattlePlayerHelpers';
 import { ActionSlots } from '../ui/battle/ActionSlots';
 import { BattleLog } from '../ui/battle/BattleLog';
+import { BattleLogDrawer } from '../ui/battle/BattleLogDrawer';
 import { BattleSeat } from '../ui/battle/BattleSeat';
 import { DicePanel } from '../ui/battle/DicePanel';
+import { PlayerDetailDialog } from '../ui/battle/PlayerDetailDialog';
+import { RematchPanel } from '../ui/battle/RematchPanel';
 import { SelfPanel } from '../ui/battle/SelfPanel';
+import { RogueliteStatusCompact } from '../ui/roguelite/RogueliteStatusCompact';
+import { ToastLayer } from '../ui/system/ToastLayer';
 import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
@@ -35,6 +40,12 @@ export class BattleScene extends Component {
   @property({ type: Button })
   rollButton: Button | null = null;
 
+  @property({ type: Button })
+  openLogButton: Button | null = null;
+
+  @property({ type: Button })
+  openDetailButton: Button | null = null;
+
   @property({ type: DicePanel })
   dicePanel: DicePanel | null = null;
 
@@ -46,6 +57,54 @@ export class BattleScene extends Component {
 
   @property({ type: SelfPanel })
   selfPanel: SelfPanel | null = null;
+
+  @property({ type: BattleLogDrawer })
+  battleLogDrawer: BattleLogDrawer | null = null;
+
+  @property({ type: PlayerDetailDialog })
+  playerDetailDialog: PlayerDetailDialog | null = null;
+
+  @property({ type: RematchPanel })
+  rematchPanel: RematchPanel | null = null;
+
+  @property({ type: ToastLayer })
+  toastLayer: ToastLayer | null = null;
+
+  @property({ type: RogueliteStatusCompact })
+  rogueliteStatusCompact: RogueliteStatusCompact | null = null;
+
+  @property({ type: Prefab })
+  battleSeatPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  dicePanelPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  actionSlotsPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  battleLogPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  selfPanelPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  battleLogDrawerPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  playerDetailDialogPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  rematchPanelPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  toastLayerPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  rogueliteStatusCompactPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  buffIconPrefab: Prefab | null = null;
 
   @property({ type: SpriteFrame })
   parchmentFrame: SpriteFrame | null = null;
@@ -86,6 +145,8 @@ export class BattleScene extends Component {
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.on(Button.EventType.CLICK, this.rollDice, this);
+    this.openLogButton?.node.on(Button.EventType.CLICK, this.openBattleLogDrawer, this);
+    this.openDetailButton?.node.on(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
 
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
@@ -96,6 +157,8 @@ export class BattleScene extends Component {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.rollButton?.node.off(Button.EventType.CLICK, this.rollDice, this);
+    this.openLogButton?.node.off(Button.EventType.CLICK, this.openBattleLogDrawer, this);
+    this.openDetailButton?.node.off(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
   }
 
   private render(room: Room): void {
@@ -119,6 +182,12 @@ export class BattleScene extends Component {
     }
     if (this.selfPanel) {
       this.selfPanel.render(room);
+    }
+    if (this.rematchPanel) {
+      this.rematchPanel.render(room, this.getLocalPlayerId(room));
+    }
+    if (this.rogueliteStatusCompact) {
+      this.rogueliteStatusCompact.render(room);
     }
 
     const actor = this.getActor(room);
@@ -273,6 +342,21 @@ export class BattleScene extends Component {
     });
   }
 
+  private openBattleLogDrawer(): void {
+    if (!this.room || !this.battleLogDrawer) return;
+    this.battleLogDrawer.open(this.room);
+  }
+
+  private openLocalPlayerDetail(): void {
+    if (!this.room || !this.playerDetailDialog) return;
+    const player = this.gameManager?.getLocalPlayer()
+      ?? this.getActor(this.room)
+      ?? this.room.players.find((item) => !item.isBot)
+      ?? this.room.players[0];
+    if (!player) return;
+    this.playerDetailDialog.open(player.id, this.room);
+  }
+
   private playerLine(room: Room, player: Player, index: number): string {
     const activeMark = index === room.activePlayerIndex || player.id === room.selectedActorId ? '> ' : '  ';
     const targetMark = player.selectedTargetId ? ` -> ${this.getPlayerName(player.selectedTargetId)}` : '';
@@ -303,6 +387,11 @@ export class BattleScene extends Component {
     return this.room?.players.find((player) => player.id === playerId)?.nickname ?? playerId;
   }
 
+  private getLocalPlayerId(room: Room): string | undefined {
+    const clientId = this.gameManager?.localClientId ?? '';
+    return room.players.find((player) => player.clientId === clientId || player.controllerId === clientId)?.id;
+  }
+
   private latestRoll(room: Room): string {
     const event = this.latestEvents(room).find((item) => item.type === 'roll' && item.dice?.length);
     return event?.dice?.join('/') ?? '';
@@ -314,8 +403,8 @@ export class BattleScene extends Component {
 
   private ensureMinimalUi(): void {
     this.ensureSpriteNode('BattleParchmentPanel', 0, 80, 680, 930, this.parchmentFrame);
-    const enemySeatNode = this.ensureSpriteNode('EnemySeatPanel', 0, 335, 640, 145, this.seatFrame);
-    const playerSeatNode = this.ensureSpriteNode('PlayerSeatPanel', 0, -170, 640, 145, this.seatFrame);
+    const enemySeatNode = this.ensurePrefabNode('EnemySeatPanel', this.battleSeatPrefab, 0, 335, 640, 145, this.node);
+    const playerSeatNode = this.ensurePrefabNode('PlayerSeatPanel', this.battleSeatPrefab, 0, -170, 640, 145, this.node);
     this.ensureSpriteNode('DiceFrame', 0, 72, 126, 126, this.diceFaces[0] ?? null);
     this.ensureBattleSeat(playerSeatNode, 0);
     this.ensureBattleSeat(enemySeatNode, 1);
@@ -323,25 +412,57 @@ export class BattleScene extends Component {
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 64, 20, this.node);
     this.playersLabel ??= null;
     this.targetListNode ??= this.ensureNode('TargetList', 0, 190, 660, 70, this.node);
-    const dicePanelNode = this.ensureNode('DicePanelNode', 0, 70, 320, 210, this.node);
+    const dicePanelNode = this.ensurePrefabNode('DicePanelNode', this.dicePanelPrefab, 0, 70, 320, 210, this.node);
     this.dicePanel ??= dicePanelNode.getComponent(DicePanel) ?? dicePanelNode.addComponent(DicePanel);
     this.dicePanel.diceFaces = this.diceFaces;
     this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 70, 640, 54, 24, this.node);
     this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -20, 210, 56, 24, this.node);
-    this.actionListNode ??= this.ensureNode('ActionList', 0, -105, 660, 130, this.node);
+    this.actionListNode ??= this.ensurePrefabNode('ActionList', this.actionSlotsPrefab, 0, -105, 660, 130, this.node);
     this.actionSlots ??= this.actionListNode.getComponent(ActionSlots) ?? this.actionListNode.addComponent(ActionSlots);
     this.actionSlots.attackFrame = this.attackFrame ?? this.actionFrame;
     this.actionSlots.skillFrame = this.skillFrame ?? this.actionFrame;
     this.actionSlots.summonerFrame = this.actionFrame ?? this.skillFrame;
 
-    const selfPanelNode = this.ensureNode('SelfPanel', 0, -335, 620, 150, this.node);
+    const selfPanelNode = this.ensurePrefabNode('SelfPanel', this.selfPanelPrefab, 0, -335, 620, 150, this.node);
     this.selfPanel ??= selfPanelNode.getComponent(SelfPanel) ?? selfPanelNode.addComponent(SelfPanel);
     this.selfPanel.panelFrame = this.seatFrame ?? this.actionFrame;
 
-    const battleLogNode = this.ensureNode('BattleLog', 0, -520, 650, 150, this.node);
+    const battleLogNode = this.ensurePrefabNode('BattleLog', this.battleLogPrefab, 0, -520, 650, 150, this.node);
     this.battleLog ??= battleLogNode.getComponent(BattleLog) ?? battleLogNode.addComponent(BattleLog);
     this.battleLog.maxLines = 6;
     this.logLabel ??= null;
+
+    this.openDetailButton ??= this.createButton('OpenDetailButton', 'Detail', -105, -610, 130, 44, 17, this.node);
+    this.openLogButton ??= this.createButton('OpenLogButton', 'Log', 105, -610, 130, 44, 17, this.node);
+
+    const detailNode = this.ensurePrefabNode('PlayerDetailDialog', this.playerDetailDialogPrefab, 0, 20, 620, 430, this.node);
+    this.playerDetailDialog ??= detailNode.getComponent(PlayerDetailDialog) ?? detailNode.addComponent(PlayerDetailDialog);
+    this.playerDetailDialog.panelFrame = this.parchmentFrame;
+    this.playerDetailDialog.buttonFrame = this.actionFrame;
+    detailNode.setSiblingIndex(998);
+
+    const drawerNode = this.ensurePrefabNode('BattleLogDrawer', this.battleLogDrawerPrefab, 0, 0, 660, 760, this.node);
+    this.battleLogDrawer ??= drawerNode.getComponent(BattleLogDrawer) ?? drawerNode.addComponent(BattleLogDrawer);
+    this.battleLogDrawer.panelFrame = this.parchmentFrame;
+    this.battleLogDrawer.buttonFrame = this.actionFrame;
+    drawerNode.setSiblingIndex(998);
+
+    const rematchNode = this.ensurePrefabNode('RematchPanel', this.rematchPanelPrefab, 0, 20, 580, 350, this.node);
+    this.rematchPanel ??= rematchNode.getComponent(RematchPanel) ?? rematchNode.addComponent(RematchPanel);
+    this.rematchPanel.panelFrame = this.parchmentFrame;
+    this.rematchPanel.buttonFrame = this.actionFrame;
+    this.rematchPanel.setHandlers(() => this.serverActions.readyForRematch());
+    rematchNode.setSiblingIndex(997);
+
+    const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -555, 560, 56, this.node);
+    this.toastLayer ??= toastNode.getComponent(ToastLayer) ?? toastNode.addComponent(ToastLayer);
+    this.toastLayer.panelFrame = this.actionFrame ?? this.seatFrame;
+
+    const compactNode = this.ensurePrefabNode('RogueliteStatusCompact', this.rogueliteStatusCompactPrefab, 0, 480, 620, 62, this.node);
+    this.rogueliteStatusCompact ??= compactNode.getComponent(RogueliteStatusCompact) ?? compactNode.addComponent(RogueliteStatusCompact);
+    this.rogueliteStatusCompact.panelFrame = this.actionFrame ?? this.seatFrame;
+    this.rogueliteStatusCompact.buffIconPrefab = this.buffIconPrefab;
+    compactNode.active = false;
   }
 
   private ensureBattleSeat(node: Node, playerIndex: number): void {
@@ -349,6 +470,21 @@ export class BattleScene extends Component {
     seat.playerIndex = playerIndex;
     seat.seatFrame = this.seatFrame;
     seat.selectedFrame = this.actionFrame ?? this.seatFrame;
+  }
+
+  private ensurePrefabNode(name: string, prefab: Prefab | null, x: number, y: number, width: number, height: number, parent: Node): Node {
+    if (!prefab) return this.ensureNode(name, x, y, width, height, parent);
+
+    const existing = parent.getChildByName(name);
+    if (existing) existing.destroy();
+
+    const node = instantiate(prefab);
+    node.name = name;
+    parent.addChild(node);
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    transform.setContentSize(width, height);
+    return node;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {

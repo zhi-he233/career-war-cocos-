@@ -1,12 +1,21 @@
-import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { titleFromId } from '../core/DisplayText';
+import { EventChoiceCard } from '../ui/roguelite/EventChoiceCard';
+import { RewardCard } from '../ui/roguelite/RewardCard';
+import { RogueliteEventHeader } from '../ui/roguelite/RogueliteEventHeader';
+import { RogueliteMapNode } from '../ui/roguelite/RogueliteMapNode';
+import { RogueliteStatusPanel } from '../ui/roguelite/RogueliteStatusPanel';
+import { ShopItemCard } from '../ui/roguelite/ShopItemCard';
+import { ShopControlBar } from '../ui/roguelite/ShopControlBar';
+import { ToastLayer } from '../ui/system/ToastLayer';
 import { getRogueliteConnectedNodeIds, getRogueliteMapNodeId, createRogueliteMapLayer } from '../shared/data/rogueliteMapRules';
 import { getRogueliteShopItemsForStage, ROGUELITE_SHOP_RULES } from '../shared/data/rogueliteShop';
+import type { RogueliteShopItemDraft } from '../shared/data/rogueliteShop';
 import { ROGUELITE_REST_SITE_ACTIONS } from '../shared/data/rogueliteRestSites';
 import type { RogueliteMapNodeSelection } from '../shared/data/rogueliteRoomTypes';
-import type { Room } from '../shared/types';
+import type { RogueliteEventChoice, Room } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -36,6 +45,42 @@ export class RogueliteScene extends Component {
   @property({ type: SpriteFrame })
   statusFrame: SpriteFrame | null = null;
 
+  @property({ type: Prefab })
+  rewardCardPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  mapNodePrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  rogueliteStatusPanelPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  toastLayerPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  eventChoiceCardPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  shopItemCardPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  rogueliteEventHeaderPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  shopControlBarPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  buffIconPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  currencyBarPrefab: Prefab | null = null;
+
+  @property({ type: RogueliteStatusPanel })
+  rogueliteStatusPanel: RogueliteStatusPanel | null = null;
+
+  @property({ type: ToastLayer })
+  toastLayer: ToastLayer | null = null;
+
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
   private room: Room | null = null;
@@ -62,6 +107,7 @@ export class RogueliteScene extends Component {
   private render(room: Room): void {
     this.room = room;
     const run = room.roguelite;
+    this.rogueliteStatusPanel?.render(room);
 
     if (this.phaseLabel) {
       this.phaseLabel.string = run
@@ -103,6 +149,21 @@ export class RogueliteScene extends Component {
       }
 
       rewards.forEach((reward, index) => {
+        if (this.rewardCardPrefab) {
+          const node = this.createRewardCard(
+            this.rewardCardPrefab,
+            reward.id,
+            `Reward_${reward.id}`,
+            0,
+            125 - index * 96,
+            titleFromId(reward.type),
+            titleFromId(reward.id),
+            reward.description ?? '',
+            index
+          );
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteReward(reward.id), this);
+          return;
+        }
         const button = this.createButton(
           `Reward_${reward.id}`,
           `${titleFromId(reward.type)}\n${titleFromId(reward.id)}`,
@@ -125,8 +186,17 @@ export class RogueliteScene extends Component {
         return;
       }
 
-      this.createText(`Event: ${titleFromId(event.id)}`, 0, 130);
+      if (this.rogueliteEventHeaderPrefab) {
+        this.createEventHeader(this.rogueliteEventHeaderPrefab, event);
+      } else {
+        this.createText(`Event: ${titleFromId(event.id)}\n${event.description}`, 0, 138);
+      }
       event.choices.forEach((choice, index) => {
+        if (this.eventChoiceCardPrefab) {
+          const node = this.createEventChoiceCard(this.eventChoiceCardPrefab, `EventChoice_${choice.id}`, 0, 30 - index * 118, choice, index);
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteEventOption(choice.id), this);
+          return;
+        }
         const button = this.createButton(
           `EventChoice_${choice.id}`,
           `Choice ${choice.id.toUpperCase()}\n${choice.cost || choice.effect || choice.label}`,
@@ -144,7 +214,22 @@ export class RogueliteScene extends Component {
 
     if (room.phase === 'roguelite_shop') {
       const items = getRogueliteShopItemsForStage(run.stage).slice(0, ROGUELITE_SHOP_RULES.itemsPerVisit);
+      if (this.shopControlBarPrefab) {
+        this.createShopControlBar(this.shopControlBarPrefab, run.runGold ?? 0);
+      }
       items.forEach((item, index) => {
+        if (this.shopItemCardPrefab) {
+          const canBuy = (run.runGold ?? 0) >= item.price && !(run.shopPurchasedIds ?? []).includes(item.id);
+          const node = this.createShopItemCard(this.shopItemCardPrefab, `Shop_${item.id}`, 0, 70 - index * 104, item, canBuy);
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => {
+            if (!canBuy) {
+              this.gameManager?.showToast('Not enough gold or already bought.', 1.4);
+              return;
+            }
+            this.serverActions.buyRogueliteShopItem(item.id);
+          }, this);
+          return;
+        }
         const button = this.createButton(
           `Shop_${item.id}`,
           `${titleFromId(item.id)} | ${item.price}g`,
@@ -158,12 +243,28 @@ export class RogueliteScene extends Component {
         button.node.on(Button.EventType.CLICK, () => this.serverActions.buyRogueliteShopItem(item.id), this);
       });
       const leave = this.createButton('LeaveShop', 'Leave Shop', 0, -180, 260, 54, 20, this.actionListNode);
+      leave.node.active = !this.shopControlBarPrefab;
       leave.node.on(Button.EventType.CLICK, () => this.serverActions.leaveRogueliteRoom(), this);
       return;
     }
 
     if (room.phase === 'roguelite_rest') {
       ROGUELITE_REST_SITE_ACTIONS.slice(0, 5).forEach((action, index) => {
+        if (this.rewardCardPrefab) {
+          const node = this.createRewardCard(
+            this.rewardCardPrefab,
+            action.id,
+            `Rest_${action.id}`,
+            0,
+            130 - index * 88,
+            titleFromId(action.id),
+            '',
+            action.effect ?? '',
+            0
+          );
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.useRogueliteRestAction(action.id), this);
+          return;
+        }
         const button = this.createButton(
           `Rest_${action.id}`,
           titleFromId(action.id),
@@ -182,6 +283,20 @@ export class RogueliteScene extends Component {
     if (room.phase === 'roguelite_continue') {
       const nodes = this.getNextRouteNodes(room);
       nodes.forEach((mapNode, index) => {
+        if (this.mapNodePrefab) {
+          const node = this.createMapNode(
+            this.mapNodePrefab,
+            `Route_${mapNode.id}`,
+            -210 + index * 210,
+            70,
+            mapNode.id,
+            `Stage ${mapNode.stage}`,
+            mapNode.type,
+            'available'
+          );
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
+          return;
+        }
         const button = this.createButton(
           `Route_${mapNode.id}`,
           `Stage ${mapNode.stage} | ${titleFromId(mapNode.type)} | ${mapNode.id}`,
@@ -241,14 +356,79 @@ export class RogueliteScene extends Component {
     return label;
   }
 
+  private createRewardCard(prefab: Prefab, id: string, name: string, x: number, y: number, title: string, subtitle: string, description: string, rarityIndex: number): Node {
+    const node = this.instantiatePrefab(prefab, name, x, y, 620, 86, this.actionListNode ?? this.node);
+    const card = node.getComponent(RewardCard) ?? node.addComponent(RewardCard);
+    card.render(id, title, subtitle, description, rarityIndex);
+    return node;
+  }
+
+  private createEventHeader(prefab: Prefab, event: NonNullable<Room['roguelite']>['pendingEvent']): Node {
+    if (!event) return this.ensureNode('EmptyEventHeader', 0, 130, 620, 52, this.actionListNode ?? this.node);
+    const node = this.instantiatePrefab(prefab, 'RogueliteEventHeader', 0, 146, 620, 118, this.actionListNode ?? this.node);
+    const header = node.getComponent(RogueliteEventHeader) ?? node.addComponent(RogueliteEventHeader);
+    header.panelFrame = this.statusFrame ?? this.actionCardFrame;
+    header.render(event);
+    return node;
+  }
+
+  private createShopControlBar(prefab: Prefab, gold: number): Node {
+    const node = this.instantiatePrefab(prefab, 'ShopControlBar', 0, 174, 620, 74, this.actionListNode ?? this.node);
+    const bar = node.getComponent(ShopControlBar) ?? node.addComponent(ShopControlBar);
+    bar.panelFrame = this.statusFrame ?? this.actionCardFrame;
+    bar.buttonFrame = this.actionCardFrame ?? this.statusFrame;
+    bar.setHandlers(
+      () => this.gameManager?.showToast('Shop refresh is not connected to the server yet.', 1.8),
+      () => this.serverActions.leaveRogueliteRoom()
+    );
+    bar.render({
+      gold,
+      refreshPrice: ROGUELITE_SHOP_RULES.refreshPrice,
+      canRefresh: ROGUELITE_SHOP_RULES.canRefresh && gold >= ROGUELITE_SHOP_RULES.refreshPrice,
+      serverRefreshAvailable: false,
+    });
+    return node;
+  }
+
+  private createEventChoiceCard(prefab: Prefab, name: string, x: number, y: number, choice: RogueliteEventChoice, index: number): Node {
+    const node = this.instantiatePrefab(prefab, name, x, y, 620, 104, this.actionListNode ?? this.node);
+    const card = node.getComponent(EventChoiceCard) ?? node.addComponent(EventChoiceCard);
+    card.cardFrame = this.rewardCardFrames[index + 1] ?? this.actionCardFrame;
+    card.render(choice, index);
+    return node;
+  }
+
+  private createShopItemCard(prefab: Prefab, name: string, x: number, y: number, item: RogueliteShopItemDraft, canBuy: boolean): Node {
+    const node = this.instantiatePrefab(prefab, name, x, y, 620, 96, this.actionListNode ?? this.node);
+    const card = node.getComponent(ShopItemCard) ?? node.addComponent(ShopItemCard);
+    card.cardFrame = this.rewardCardFrames[2] ?? this.actionCardFrame;
+    card.render(item, canBuy);
+    return node;
+  }
+
+  private createMapNode(prefab: Prefab, name: string, x: number, y: number, id: string, title: string, type: string, status: 'current' | 'available' | 'locked' | 'cleared' | 'preview'): Node {
+    const node = this.instantiatePrefab(prefab, name, x, y, 170, 92, this.actionListNode ?? this.node);
+    const mapNode = node.getComponent(RogueliteMapNode) ?? node.addComponent(RogueliteMapNode);
+    mapNode.render(id, title, type, status);
+    return node;
+  }
+
   private ensureMinimalUi(): void {
     this.ensureSpriteNode('RogueliteParchmentPanel', 0, 70, 675, 770, this.parchmentFrame);
-    this.ensureSpriteNode('RogueliteStatusPanel', 0, 500, 640, 96, this.statusFrame);
+    const statusNode = this.ensurePrefabNode('RogueliteStatusPanel', this.rogueliteStatusPanelPrefab, 0, 500, 640, 112, this.node);
+    this.rogueliteStatusPanel ??= statusNode.getComponent(RogueliteStatusPanel) ?? statusNode.addComponent(RogueliteStatusPanel);
+    this.rogueliteStatusPanel.panelFrame = this.statusFrame;
+    this.rogueliteStatusPanel.buffIconPrefab = this.buffIconPrefab;
+    this.rogueliteStatusPanel.currencyBarPrefab = this.currencyBarPrefab;
 
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 66, 20, this.node);
     this.summaryLabel ??= this.ensureLabel('SummaryLabel', 0, 480, 620, 78, 16, this.node);
     this.actionListNode ??= this.ensureNode('ActionList', 0, 110, 640, 460, this.node);
     this.logLabel ??= this.ensureLabel('RogueliteLogLabel', 0, -455, 650, 160, 15, this.node);
+
+    const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -555, 560, 56, this.node);
+    this.toastLayer ??= toastNode.getComponent(ToastLayer) ?? toastNode.addComponent(ToastLayer);
+    this.toastLayer.panelFrame = this.statusFrame ?? this.actionCardFrame;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {
@@ -305,6 +485,31 @@ export class RogueliteScene extends Component {
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     }
     node.setSiblingIndex(1);
+    return node;
+  }
+
+  private ensurePrefabNode(name: string, prefab: Prefab | null, x: number, y: number, width: number, height: number, parent: Node): Node {
+    if (!prefab) return this.ensureNode(name, x, y, width, height, parent);
+
+    const existing = parent.getChildByName(name);
+    if (existing) existing.destroy();
+
+    const node = instantiate(prefab);
+    node.name = name;
+    parent.addChild(node);
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    transform.setContentSize(width, height);
+    return node;
+  }
+
+  private instantiatePrefab(prefab: Prefab, name: string, x: number, y: number, width: number, height: number, parent: Node): Node {
+    const node = instantiate(prefab);
+    node.name = name;
+    parent.addChild(node);
+    node.setPosition(new Vec3(x, y, 0));
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    transform.setContentSize(width, height);
     return node;
   }
 

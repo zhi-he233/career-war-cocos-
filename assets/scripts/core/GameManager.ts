@@ -148,6 +148,10 @@ export class GameManager extends Component {
     this.node.emit(GameEvents.StatusUpdated, status);
   }
 
+  showToast(message: string, duration = 1.6): void {
+    this.node.emit(GameEvents.ToastRequested, message, duration);
+  }
+
   setLocalPlayer(clientId: string, nickname: string): void {
     this.localClientId = clientId;
     this.localNickname = nickname;
@@ -205,11 +209,15 @@ export class GameManager extends Component {
     if (!response || typeof response !== 'object') return;
     const ack = response as { ok?: boolean; error?: unknown; room?: Room; playerId?: string };
     if (ack.ok === false) {
-      this.setStatus(`${event} failed: ${this.errorMessage(ack.error)}`);
+      const message = `${event} failed: ${this.errorMessage(ack.error)}`;
+      this.setStatus(message);
+      this.showToast(message, 2.2);
       return;
     }
     if (ack.ok === true) {
-      this.setStatus(`${event} ok`);
+      const message = `${event} ok`;
+      this.setStatus(message);
+      this.showToast(message, 1.2);
       if (ack.playerId) this.setLocalPlayerId(ack.playerId);
       if (ack.room) this.applyRoomUpdate(ack.room);
     }

@@ -360,7 +360,61 @@
         "__uuid__": "aff29123-b217-49fc-9ce3-22abac23f842@f9941",
         "__expectedType__": "cc.SpriteFrame"
       }
-    ]
+    ],
+    "actionSlots": null,
+    "battleLog": null,
+    "selfPanel": null,
+    "battleSeatPrefab": {
+      "__uuid__": "b1ef8b07-cb3b-4fa9-833e-24d9063592ef",
+      "__expectedType__": "cc.Prefab"
+    },
+    "dicePanelPrefab": {
+      "__uuid__": "90ac7464-4be9-4652-ac7f-1c3c7aba81a5",
+      "__expectedType__": "cc.Prefab"
+    },
+    "actionSlotsPrefab": {
+      "__uuid__": "6853859f-090e-4f6b-ac8e-1e636ad7bbcf",
+      "__expectedType__": "cc.Prefab"
+    },
+    "battleLogPrefab": {
+      "__uuid__": "f02c434e-1a91-4dae-993c-2c524f4832e9",
+      "__expectedType__": "cc.Prefab"
+    },
+    "selfPanelPrefab": {
+      "__uuid__": "dc153592-d928-46d3-99da-a5329ecd3d94",
+      "__expectedType__": "cc.Prefab"
+    },
+    "openLogButton": null,
+    "openDetailButton": null,
+    "battleLogDrawer": null,
+    "playerDetailDialog": null,
+    "rematchPanel": null,
+    "battleLogDrawerPrefab": {
+      "__uuid__": "e4da3abb-aa17-4252-9828-40aeb47204b5",
+      "__expectedType__": "cc.Prefab"
+    },
+    "playerDetailDialogPrefab": {
+      "__uuid__": "bbd0132f-b5ff-4ce0-9f23-8dc32bbc33c9",
+      "__expectedType__": "cc.Prefab"
+    },
+    "rematchPanelPrefab": {
+      "__uuid__": "493aa276-b464-4817-a0bf-5f7b73e2b6ab",
+      "__expectedType__": "cc.Prefab"
+    },
+    "toastLayerPrefab": {
+      "__uuid__": "1a1a9a28-3e83-4005-aed5-995b6a7b69e2",
+      "__expectedType__": "cc.Prefab"
+    },
+    "toastLayer": null,
+    "rogueliteStatusCompact": null,
+    "rogueliteStatusCompactPrefab": {
+      "__uuid__": "63c460d0-3fa6-491f-a61c-7d6c738bbfd8",
+      "__expectedType__": "cc.Prefab"
+    },
+    "buffIconPrefab": {
+      "__uuid__": "17c9a826-ce0d-48b1-9063-3711cabb3c7c",
+      "__expectedType__": "cc.Prefab"
+    }
   },
   {
     "__type__": "cc.SceneGlobals",

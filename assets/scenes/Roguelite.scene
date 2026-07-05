@@ -326,6 +326,48 @@
     "statusFrame": {
       "__uuid__": "85a06ab9-7c9b-4041-8ea9-474b9b90f849@f9941",
       "__expectedType__": "cc.SpriteFrame"
+    },
+    "rewardCardPrefab": {
+      "__uuid__": "00caff60-b320-4de0-b701-d0223e616351",
+      "__expectedType__": "cc.Prefab"
+    },
+    "mapNodePrefab": {
+      "__uuid__": "4f0f038b-4b14-4886-896f-8985755af5a6",
+      "__expectedType__": "cc.Prefab"
+    },
+    "rogueliteStatusPanelPrefab": {
+      "__uuid__": "bdf6ef4c-c7e6-4405-a6bf-efc434b50df4",
+      "__expectedType__": "cc.Prefab"
+    },
+    "toastLayerPrefab": {
+      "__uuid__": "1a1a9a28-3e83-4005-aed5-995b6a7b69e2",
+      "__expectedType__": "cc.Prefab"
+    },
+    "rogueliteStatusPanel": null,
+    "toastLayer": null,
+    "eventChoiceCardPrefab": {
+      "__uuid__": "8d4ae30b-3cde-436d-aef7-4240e4851bf5",
+      "__expectedType__": "cc.Prefab"
+    },
+    "shopItemCardPrefab": {
+      "__uuid__": "984bde12-7139-4395-b476-915c6076fe1e",
+      "__expectedType__": "cc.Prefab"
+    },
+    "buffIconPrefab": {
+      "__uuid__": "17c9a826-ce0d-48b1-9063-3711cabb3c7c",
+      "__expectedType__": "cc.Prefab"
+    },
+    "currencyBarPrefab": {
+      "__uuid__": "5eac5290-49df-4505-b568-cf92647cd845",
+      "__expectedType__": "cc.Prefab"
+    },
+    "rogueliteEventHeaderPrefab": {
+      "__uuid__": "c3832bbe-b2f0-4078-b07e-f3bedbc9290b",
+      "__expectedType__": "cc.Prefab"
+    },
+    "shopControlBarPrefab": {
+      "__uuid__": "68c0a396-f871-40fe-acaf-cee023b812dd",
+      "__expectedType__": "cc.Prefab"
     }
   },
   {

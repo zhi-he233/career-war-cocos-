@@ -2353,7 +2353,23 @@
     ],
     "diceRollDuration": 0.72,
     "fallbackSceneDelay": 0.8,
-    "_id": "15vsOjpMZN27+HVKtIgNfX"
+    "_id": "15vsOjpMZN27+HVKtIgNfX",
+    "ruleGuidePanelPrefab": {
+      "__uuid__": "2238e6ee-5e3e-4148-8b19-39fd3525ba38",
+      "__expectedType__": "cc.Prefab"
+    },
+    "toastLayerPrefab": {
+      "__uuid__": "1a1a9a28-3e83-4005-aed5-995b6a7b69e2",
+      "__expectedType__": "cc.Prefab"
+    },
+    "overlayPanelFrame": {
+      "__uuid__": "15517c45-c0e1-4841-a8ef-fae0b8cac46c@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
+    "overlayButtonFrame": {
+      "__uuid__": "55465736-7a11-40af-80c8-6af3391ce8a7@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    }
   },
   {
     "__type__": "cc.SceneGlobals",
