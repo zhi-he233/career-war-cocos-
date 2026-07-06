@@ -1,7 +1,7 @@
 import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
-import { SUMMONER_SKILL_IDS, characterName, summonerSkillName, characterDescription, gameModeDescription } from '../core/DisplayText';
+import { SUMMONER_SKILL_IDS, characterName, summonerSkillName, summonerSkillDescription, characterDescription, gameModeDescription } from '../core/DisplayText';
 import { CharacterCard } from '../ui/lobby/CharacterCard';
 import { CharacterDetailDialog } from '../ui/lobby/CharacterDetailDialog';
 import { DuoSlotPicker } from '../ui/lobby/DuoSlotPicker';

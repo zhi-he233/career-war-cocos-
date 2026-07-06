@@ -430,7 +430,8 @@ export class GameManager extends Component {
   private getSceneNameForPhase(phase: RoomPhase): string | null {
     if (phase === 'lobby') return this.getLobbySceneName();
     if (phase === 'battle' || phase === 'gameOver') {
-      return this.room?.gameMode === 'pve_roguelite' ? this.rogueliteBattleSceneName : this.battleSceneName;
+      const mode = this.room?.gameMode ?? this.room?.settings?.gameMode;
+      return mode === 'pve_roguelite' ? this.rogueliteBattleSceneName : this.battleSceneName;
     }
     if (ROGUELITE_PHASES.includes(phase)) return this.rogueliteSceneName;
     return null;

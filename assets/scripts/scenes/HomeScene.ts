@@ -280,7 +280,8 @@ export class HomeScene extends Component {
       return this.lobbySceneForRoom(room);
     }
     if (room.phase === 'battle' || room.phase === 'gameOver') {
-      return room.gameMode === 'pve_roguelite' ? 'RogueliteBattle' : 'Battle';
+      const mode = room.gameMode ?? room.settings?.gameMode;
+      return mode === 'pve_roguelite' ? 'RogueliteBattle' : 'Battle';
     }
     if (
       room.phase === 'reward' ||

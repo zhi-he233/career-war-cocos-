@@ -69,24 +69,24 @@ export class ServerActions {
     this.gameManager.emitAck('chooseRogueliteReward', { rewardId }, callback);
   }
 
-  chooseRogueliteEventOption(choiceId: string): void {
-    this.gameManager.emitAck('chooseRogueliteEventOption', { choiceId });
+  chooseRogueliteEventOption(choiceId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('chooseRogueliteEventOption', { choiceId }, callback);
   }
 
   chooseRogueliteContinue(choice: 'finish' | 'continue', mapNode?: unknown, callback?: (response: unknown) => void): void {
     this.gameManager.emitAck('chooseRogueliteContinue', { choice, mapNode }, callback);
   }
 
-  buyRogueliteShopItem(itemId: string): void {
-    this.gameManager.emitAck('buyRogueliteShopItem', { itemId });
+  buyRogueliteShopItem(itemId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('buyRogueliteShopItem', { itemId }, callback);
   }
 
-  useRogueliteRestAction(actionId: string): void {
-    this.gameManager.emitAck('useRogueliteRestAction', { actionId });
+  useRogueliteRestAction(actionId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('useRogueliteRestAction', { actionId }, callback);
   }
 
-  leaveRogueliteRoom(): void {
-    this.gameManager.emitAck('leaveRogueliteRoom', {});
+  leaveRogueliteRoom(callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('leaveRogueliteRoom', {}, callback);
   }
 
   kickPlayer(playerId: string): void {

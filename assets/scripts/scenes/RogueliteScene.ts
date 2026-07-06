@@ -2,7 +2,9 @@ import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, Spri
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { titleFromId } from '../core/DisplayText';
+import { buildRogueliteRewardOption } from '../helpers/RogueliteHelpers';
 import { EventChoiceCard } from '../ui/roguelite/EventChoiceCard';
+import type { EventChoiceCardState } from '../ui/roguelite/EventChoiceCard';
 import { RewardCard } from '../ui/roguelite/RewardCard';
 import type { RewardCardState } from '../ui/roguelite/RewardCard';
 import { RogueliteEventHeader } from '../ui/roguelite/RogueliteEventHeader';
@@ -11,13 +13,14 @@ import type { RogueliteMapNodeStatus } from '../ui/roguelite/RogueliteMapNode';
 import { RogueliteStatusPanel } from '../ui/roguelite/RogueliteStatusPanel';
 import { ShopItemCard } from '../ui/roguelite/ShopItemCard';
 import { ShopControlBar } from '../ui/roguelite/ShopControlBar';
+import { InfoDialog } from '../ui/system/InfoDialog';
 import { ToastLayer } from '../ui/system/ToastLayer';
 import { getRogueliteConnectedNodeIds, getRogueliteMapNodeId, createRogueliteMapLayer } from '../shared/data/rogueliteMapRules';
 import { getRogueliteShopItemsForStage, ROGUELITE_SHOP_RULES } from '../shared/data/rogueliteShop';
 import type { RogueliteShopItemDraft } from '../shared/data/rogueliteShop';
 import { ROGUELITE_REST_SITE_ACTIONS } from '../shared/data/rogueliteRestSites';
 import type { RogueliteMapNodeSelection } from '../shared/data/rogueliteRoomTypes';
-import type { RogueliteEventChoice, Room } from '../shared/types';
+import type { RogueliteEventChoice, RoguelitePendingEvent, Room } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -77,11 +80,16 @@ export class RogueliteScene extends Component {
   @property({ type: Prefab })
   currencyBarPrefab: Prefab | null = null;
 
+  @property({ type: Prefab })
+  infoDialogPrefab: Prefab | null = null;
+
   @property({ type: RogueliteStatusPanel })
   rogueliteStatusPanel: RogueliteStatusPanel | null = null;
 
   @property({ type: ToastLayer })
   toastLayer: ToastLayer | null = null;
+
+  private infoDialog: InfoDialog | null = null;
 
   private gameManager: GameManager | null = null;
   private serverActions!: ServerActions;
@@ -89,6 +97,9 @@ export class RogueliteScene extends Component {
   private statusText = '';
   private pendingRewardId = '';
   private pendingRouteNodeId = '';
+  private pendingEventChoiceId = '';
+  private pendingShopAction = '';
+  private pendingRestActionId = '';
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -112,6 +123,9 @@ export class RogueliteScene extends Component {
     this.room = room;
     this.syncPendingReward(room);
     this.syncPendingRoute(room);
+    this.syncPendingEvent(room);
+    this.syncPendingShop(room);
+    this.syncPendingRest(room);
     const run = room.roguelite;
     this.rogueliteStatusPanel?.render(room);
 
@@ -155,8 +169,10 @@ export class RogueliteScene extends Component {
       }
 
       rewards.forEach((reward, index) => {
+        const option = buildRogueliteRewardOption(reward);
         const selected = this.pendingRewardId === reward.id;
         const state: RewardCardState = selected ? 'selected' : this.pendingRewardId ? 'disabled' : 'available';
+
         if (this.rewardCardPrefab) {
           const node = this.createRewardCard(
             this.rewardCardPrefab,
@@ -164,26 +180,43 @@ export class RogueliteScene extends Component {
             `Reward_${reward.id}`,
             0,
             125 - index * 96,
-            titleFromId(reward.type),
-            titleFromId(reward.id),
+            option.name,
+            option.rarity.toUpperCase(),
             reward.description ?? '',
-            index,
-            state
+            RewardCard.rarityIndexForRarity(option.rarity),
+            state,
           );
+          const card = node.getComponent(RewardCard);
+          if (card) {
+            // Show rarity tags on available cards
+            if (state === 'available') {
+              card.renderRich(
+                reward.id,
+                option.name,
+                option.rarity.toUpperCase(),
+                reward.description ?? '',
+                option.rarity,
+                option.tags,
+                state,
+              );
+            }
+            card.onInfo = () => this.showRewardInfo(option);
+          }
           const button = node.getComponent(Button);
           if (button) button.interactable = !this.pendingRewardId;
           button?.node.on(Button.EventType.CLICK, () => this.chooseReward(reward.id), this);
           return;
         }
+        // Fallback: plain button without RewardCard prefab
         const button = this.createButton(
           `Reward_${reward.id}`,
-          `${titleFromId(reward.type)}\n${titleFromId(reward.id)}`,
+          `${option.name}\n${option.rarity} | ${option.tags.join(' ')}`,
           0,
           90 - index * 76,
           620,
           64,
           17,
-          this.actionListNode!
+          this.actionListNode!,
         );
         button.interactable = !this.pendingRewardId;
         this.applyRewardButtonState(button, state);
@@ -202,47 +235,99 @@ export class RogueliteScene extends Component {
       if (this.rogueliteEventHeaderPrefab) {
         this.createEventHeader(this.rogueliteEventHeaderPrefab, event);
       } else {
-        this.createText(`Event: ${titleFromId(event.id)}\n${event.description}`, 0, 138);
+        this.createText(`Event: ${event.name || titleFromId(event.id)}\n${event.description}`, 0, 138);
+      }
+      if (event.choices.length === 0) {
+        this.createText('No event choices available.', 0, -40);
+        return;
       }
       event.choices.forEach((choice, index) => {
+        const selected = this.pendingEventChoiceId === choice.id;
+        const state: EventChoiceCardState = selected ? 'selected' : this.pendingEventChoiceId ? 'disabled' : 'available';
+
         if (this.eventChoiceCardPrefab) {
-          const node = this.createEventChoiceCard(this.eventChoiceCardPrefab, `EventChoice_${choice.id}`, 0, 30 - index * 118, choice, index);
-          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteEventOption(choice.id), this);
+          const node = this.createEventChoiceCard(
+            this.eventChoiceCardPrefab,
+            `EventChoice_${choice.id}`,
+            0,
+            30 - index * 118,
+            choice,
+            index,
+          );
+          const card = node.getComponent(EventChoiceCard);
+          if (card) {
+            if (state !== 'available') card.setState(state);
+            card.setInteractable(!this.pendingEventChoiceId);
+            card.highlightCost(this.eventCostRiskHint(choice));
+            card.onInfo = () => this.showEventChoiceInfo(event, choice);
+          }
+          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.chooseEventOption(choice.id), this);
           return;
         }
+        // Fallback: plain button without EventChoiceCard prefab
         const button = this.createButton(
           `EventChoice_${choice.id}`,
-          `Choice ${choice.id.toUpperCase()}\n${choice.cost || choice.effect || choice.label}`,
+          `Choice ${choice.id.toUpperCase()}\n${choice.effect || choice.label}\n${choice.cost || 'Cost: none'}`,
           0,
           45 - index * 84,
           620,
           70,
           17,
-          this.actionListNode!
+          this.actionListNode!,
         );
-        button.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteEventOption(choice.id), this);
+        button.interactable = !this.pendingEventChoiceId;
+        button.node.on(Button.EventType.CLICK, () => this.chooseEventOption(choice.id), this);
       });
       return;
     }
 
     if (room.phase === 'roguelite_shop') {
+      const gold = run.runGold ?? 0;
+      const purchasedIds = run.shopPurchasedIds ?? [];
       const items = getRogueliteShopItemsForStage(run.stage).slice(0, ROGUELITE_SHOP_RULES.itemsPerVisit);
+      const locked = !!this.pendingShopAction;
+
       if (this.shopControlBarPrefab) {
-        this.createShopControlBar(this.shopControlBarPrefab, run.runGold ?? 0);
+        const barNode = this.createShopControlBar(this.shopControlBarPrefab, gold);
+        const bar = barNode.getComponent(ShopControlBar);
+        if (bar) {
+          bar.setHandlers(
+            () => this.refreshShop(),
+            () => this.leaveShop(),
+          );
+          if (locked) {
+            if (bar.refreshButton) bar.refreshButton.interactable = false;
+            if (bar.leaveButton) bar.leaveButton.interactable = false;
+          }
+        }
       }
       items.forEach((item, index) => {
+        const isPending = this.pendingShopAction === item.id;
+        const canBuy = !locked && gold >= item.price && !purchasedIds.includes(item.id);
+
         if (this.shopItemCardPrefab) {
-          const canBuy = (run.runGold ?? 0) >= item.price && !(run.shopPurchasedIds ?? []).includes(item.id);
-          const node = this.createShopItemCard(this.shopItemCardPrefab, `Shop_${item.id}`, 0, 70 - index * 104, item, canBuy);
+          const node = this.createShopItemCard(
+            this.shopItemCardPrefab,
+            `Shop_${item.id}`,
+            0,
+            70 - index * 104,
+            item,
+            canBuy,
+          );
           node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => {
-            if (!canBuy) {
-              this.gameManager?.showToast('Not enough gold or already bought.', 1.4);
+            if (!canBuy && !isPending) {
+              if (purchasedIds.includes(item.id)) {
+                this.gameManager?.showToast('Already purchased.', 1.4);
+              } else if (gold < item.price) {
+                this.gameManager?.showToast('Not enough gold.', 1.4);
+              }
               return;
             }
-            this.serverActions.buyRogueliteShopItem(item.id);
+            this.buyShopItem(item.id);
           }, this);
           return;
         }
+        // Fallback: plain button without ShopItemCard prefab
         const button = this.createButton(
           `Shop_${item.id}`,
           `${titleFromId(item.id)} | ${item.price}g`,
@@ -251,18 +336,35 @@ export class RogueliteScene extends Component {
           620,
           52,
           16,
-          this.actionListNode!
+          this.actionListNode!,
         );
-        button.node.on(Button.EventType.CLICK, () => this.serverActions.buyRogueliteShopItem(item.id), this);
+        button.interactable = canBuy;
+        button.node.on(Button.EventType.CLICK, () => {
+          if (!canBuy) {
+            if (purchasedIds.includes(item.id)) {
+              this.gameManager?.showToast('Already purchased.', 1.4);
+            } else if (gold < item.price) {
+              this.gameManager?.showToast('Not enough gold.', 1.4);
+            }
+            return;
+          }
+          this.buyShopItem(item.id);
+        }, this);
       });
+      // Fallback leave button (only when no ShopControlBar)
       const leave = this.createButton('LeaveShop', 'Leave Shop', 0, -180, 260, 54, 20, this.actionListNode);
       leave.node.active = !this.shopControlBarPrefab;
-      leave.node.on(Button.EventType.CLICK, () => this.serverActions.leaveRogueliteRoom(), this);
+      leave.interactable = !locked;
+      leave.node.on(Button.EventType.CLICK, () => this.leaveShop(), this);
       return;
     }
 
     if (room.phase === 'roguelite_rest') {
+      const locked = !!this.pendingRestActionId;
       ROGUELITE_REST_SITE_ACTIONS.slice(0, 5).forEach((action, index) => {
+        const isPending = this.pendingRestActionId === action.id;
+        const state: RewardCardState = isPending ? 'selected' : locked ? 'disabled' : 'available';
+
         if (this.rewardCardPrefab) {
           const node = this.createRewardCard(
             this.rewardCardPrefab,
@@ -270,25 +372,30 @@ export class RogueliteScene extends Component {
             `Rest_${action.id}`,
             0,
             130 - index * 88,
-            titleFromId(action.id),
-            '',
+            action.name,
+            action.limit || '',
             action.effect ?? '',
-            0
+            0,
+            state,
           );
-          node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.serverActions.useRogueliteRestAction(action.id), this);
+          const button = node.getComponent(Button);
+          if (button) button.interactable = !locked;
+          button?.node.on(Button.EventType.CLICK, () => this.useRestAction(action.id), this);
           return;
         }
+        // Fallback: plain button without RewardCard prefab
         const button = this.createButton(
           `Rest_${action.id}`,
-          titleFromId(action.id),
+          `${action.name}\n${action.effect}`,
           0,
           130 - index * 64,
           620,
           52,
           17,
-          this.actionListNode!
+          this.actionListNode!,
         );
-        button.node.on(Button.EventType.CLICK, () => this.serverActions.useRogueliteRestAction(action.id), this);
+        button.interactable = !locked;
+        button.node.on(Button.EventType.CLICK, () => this.useRestAction(action.id), this);
       });
       return;
     }
@@ -315,7 +422,7 @@ export class RogueliteScene extends Component {
       }
       const finish = this.createButton('FinishRun', 'Finish Run', 0, -170, 260, 54, 20, this.actionListNode);
       finish.interactable = !this.pendingRouteNodeId;
-      finish.node.on(Button.EventType.CLICK, () => this.serverActions.chooseRogueliteContinue('finish'), this);
+      finish.node.on(Button.EventType.CLICK, () => this.finishRogueliteRun(), this);
       return;
     }
 
@@ -341,7 +448,30 @@ export class RogueliteScene extends Component {
         this.gameManager?.showToast('No server response. You can try again.', 1.6);
         this.render(this.room);
       }
-    }, 6);
+    }, 8);
+  }
+
+  /** Finish the roguelite run. Uses the same lock as route selection to prevent double-send. */
+  private finishRogueliteRun(): void {
+    if (this.pendingRouteNodeId) return;
+    this.pendingRouteNodeId = 'finish';
+    this.gameManager?.showToast('Finishing run...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.chooseRogueliteContinue('finish', undefined, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingRouteNodeId = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingRouteNodeId === 'finish' && this.room?.phase === 'roguelite_continue') {
+        this.pendingRouteNodeId = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 8);
   }
 
   private renderStatus(status: string): void {
@@ -368,7 +498,21 @@ export class RogueliteScene extends Component {
         this.gameManager?.showToast('No server response. You can try again.', 1.6);
         this.render(this.room);
       }
-    }, 6);
+    }, 8);
+  }
+
+  /** Open InfoDialog with full reward details. Non-blocking — does not affect selection. */
+  private showRewardInfo(option: ReturnType<typeof buildRogueliteRewardOption>): void {
+    if (!this.infoDialog) return;
+    this.infoDialog.show(
+      option.name,
+      option.description || 'No description.',
+      [
+        { heading: 'Rarity', content: option.rarity.toUpperCase() },
+        { heading: 'Tags', content: option.tags.join(' · ') || 'none' },
+        { heading: 'Type', content: option.icon },
+      ],
+    );
   }
 
   private syncPendingReward(room: Room): void {
@@ -382,6 +526,161 @@ export class RogueliteScene extends Component {
     if (!this.pendingRouteNodeId) return;
     const stillChoosingRoute = room.phase === 'roguelite_continue' && this.getNextRouteNodes(room).some((node) => node.id === this.pendingRouteNodeId);
     if (!stillChoosingRoute) this.pendingRouteNodeId = '';
+  }
+
+  private syncPendingEvent(room: Room): void {
+    if (!this.pendingEventChoiceId) return;
+    const event = room.roguelite?.pendingEvent;
+    const stillChoosing =
+      room.phase === 'roguelite_event' &&
+      !!event &&
+      event.choices.some((c) => c.id === this.pendingEventChoiceId);
+    if (!stillChoosing) this.pendingEventChoiceId = '';
+  }
+
+  private syncPendingShop(room: Room): void {
+    if (!this.pendingShopAction) return;
+    // Clear lock when phase changes away from shop
+    if (room.phase !== 'roguelite_shop') {
+      this.pendingShopAction = '';
+      return;
+    }
+    // If pending a specific item and it was purchased, clear lock
+    if (this.pendingShopAction !== 'leave' && this.pendingShopAction !== 'refresh') {
+      const purchased = room.roguelite?.shopPurchasedIds ?? [];
+      if (purchased.includes(this.pendingShopAction)) {
+        this.pendingShopAction = '';
+      }
+    }
+  }
+
+  private syncPendingRest(room: Room): void {
+    if (!this.pendingRestActionId) return;
+    if (room.phase !== 'roguelite_rest') {
+      this.pendingRestActionId = '';
+    }
+  }
+
+  /** Use a rest action with pending lock, ack recovery, and 8s timeout. */
+  private useRestAction(actionId: string): void {
+    if (this.pendingRestActionId) return;
+    this.pendingRestActionId = actionId;
+    this.gameManager?.showToast('Using rest action...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.useRogueliteRestAction(actionId, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingRestActionId = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingRestActionId === actionId && this.room?.phase === 'roguelite_rest') {
+        this.pendingRestActionId = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 8);
+  }
+
+  /** Buy a shop item with pending lock, ack recovery, and 8s timeout. */
+  private buyShopItem(itemId: string): void {
+    if (this.pendingShopAction) return;
+    this.pendingShopAction = itemId;
+    this.gameManager?.showToast('Purchasing...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.buyRogueliteShopItem(itemId, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingShopAction = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingShopAction === itemId && this.room?.phase === 'roguelite_shop') {
+        this.pendingShopAction = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 8);
+  }
+
+  /** Leave the shop with pending lock, ack recovery, and 8s timeout. */
+  private leaveShop(): void {
+    if (this.pendingShopAction) return;
+    this.pendingShopAction = 'leave';
+    this.gameManager?.showToast('Leaving shop...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.leaveRogueliteRoom((response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingShopAction = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingShopAction === 'leave' && this.room?.phase === 'roguelite_shop') {
+        this.pendingShopAction = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 8);
+  }
+
+  /** Refresh shop items. Currently not wired to server; shows toast. */
+  private refreshShop(): void {
+    if (this.pendingShopAction) return;
+    this.gameManager?.showToast('Shop refresh is not connected to the server yet.', 1.8);
+  }
+
+  /** Select an event choice with pending lock, ack recovery, and 8s timeout. */
+  private chooseEventOption(choiceId: string): void {
+    if (this.pendingEventChoiceId) return;
+    this.pendingEventChoiceId = choiceId;
+    this.gameManager?.showToast('Choice selected. Waiting for server...', 1.4);
+    if (this.room) this.render(this.room);
+
+    this.serverActions.chooseRogueliteEventOption(choiceId, (response) => {
+      if (this.isAckFailure(response)) {
+        this.pendingEventChoiceId = '';
+        if (this.room) this.render(this.room);
+      }
+    });
+
+    this.scheduleOnce(() => {
+      if (this.pendingEventChoiceId === choiceId && this.room?.phase === 'roguelite_event') {
+        this.pendingEventChoiceId = '';
+        this.gameManager?.showToast('No server response. You can try again.', 1.6);
+        this.render(this.room);
+      }
+    }, 8);
+  }
+
+  /** Extract a risk hint from choice cost for color display. */
+  private eventCostRiskHint(choice: RogueliteEventChoice): string {
+    const cost = (choice.cost ?? '').toLowerCase();
+    if (cost.includes('hp') || cost.includes('生命')) return 'lose_hp';
+    if (cost.includes('gold') || cost.includes('金币')) return 'lose_gold';
+    if (cost.includes('battle') || cost.includes('战斗')) return 'start_battle';
+    return '';
+  }
+
+  /** Open InfoDialog with event choice details. Non-blocking. */
+  private showEventChoiceInfo(event: RoguelitePendingEvent, choice: RogueliteEventChoice): void {
+    if (!this.infoDialog) return;
+    this.infoDialog.show(
+      `${event.name} — Choice ${choice.id.toUpperCase()}`,
+      choice.effect || 'No effect description.',
+      [
+        { heading: 'Event', content: event.description || event.name },
+        { heading: 'Cost', content: choice.cost || 'None' },
+        { heading: 'Effect', content: choice.effect || 'Unknown' },
+        { heading: 'Rarity', content: event.rarity.toUpperCase() },
+      ],
+    );
   }
 
   private isAckFailure(response: unknown): boolean {
@@ -575,6 +874,11 @@ export class RogueliteScene extends Component {
     const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -555, 560, 56, this.node);
     this.toastLayer ??= toastNode.getComponent(ToastLayer) ?? toastNode.addComponent(ToastLayer);
     this.toastLayer.panelFrame = this.statusFrame ?? this.actionCardFrame;
+
+    const infoNode = this.ensurePrefabNode('InfoDialog', this.infoDialogPrefab, 0, 0, 520, 440, this.node);
+    this.infoDialog ??= infoNode.getComponent(InfoDialog) ?? infoNode.addComponent(InfoDialog);
+    this.infoDialog.panelFrame = this.statusFrame ?? this.actionCardFrame;
+    if (this.infoDialog.node.active) this.infoDialog.node.active = false;
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number, parent: Node): Node {
