@@ -92,7 +92,7 @@ export class ProfilePanel extends Component {
     if (this.achievementsLabel) this.achievementsLabel.string = achievements || 'No achievements yet.';
     if (this.roomLabel) {
       this.roomLabel.string = room
-        ? `Current room ${room.id}\nMode ${room.gameMode ?? room.settings.gameMode}\nPhase ${room.phase}\nPlayers ${room.players.length}/${room.settings.maxPlayers}`
+        ? `Current room ${room.id}\nMode ${room.gameMode ?? room.settings?.gameMode}\nPhase ${room.phase}\nPlayers ${room.players.length}/${room.settings.maxPlayers}`
         : 'Current room: none';
     }
   }

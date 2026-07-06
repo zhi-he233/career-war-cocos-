@@ -1,6 +1,5 @@
 import { _decorator, Button, Color, Component, Label, Node, ProgressBar, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3 } from 'cc';
 import { GameManager } from '../../core/GameManager';
-import { ServerActions } from '../../core/ServerActions';
 import { canLocalAct, canTarget, getActor } from '../../helpers/BattlePlayerHelpers';
 import { buildSeatViewModel } from '../../models/ViewModelBuilders';
 import type { SeatViewModel } from '../../models/ViewModels';
@@ -55,15 +54,17 @@ export class BattleSeat extends Component {
   @property({ type: SpriteFrame })
   selectedFrame: SpriteFrame | null = null;
 
+  /** Callbacks bound by BattleScene to unify lock-chain handling. */
+  onSelectActor?: (playerId: string) => void;
+  onSelectTarget?: (playerId: string) => void;
+
   private gameManager: GameManager | null = null;
-  private serverActions!: ServerActions;
   private player: Player | null = null;
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
 
   onLoad(): void {
     this.ensureMinimalUi();
     this.gameManager = GameManager.getInstance();
-    this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.node.on(Button.EventType.CLICK, this.selectAsTarget, this);
     const room = this.gameManager.getRoom();
@@ -142,12 +143,12 @@ export class BattleSeat extends Component {
     // Duo mode: clicking your own team member selects them as the actor
     const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
     if (mode === 'duo_2v2' && this.isOwnPlayer(this.player, clientId)) {
-      this.serverActions.selectActor(this.player.id);
+      this.onSelectActor?.(this.player.id);
       return;
     }
 
     if (!this.isSelectableTarget(room, this.player)) return;
-    this.serverActions.selectTarget(this.player.id);
+    this.onSelectTarget?.(this.player.id);
   }
 
   private isSelectableTarget(room: Room, player: Player): boolean {

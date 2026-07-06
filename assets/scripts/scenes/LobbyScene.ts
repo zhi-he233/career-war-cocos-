@@ -192,7 +192,7 @@ export class LobbyScene extends Component {
     if (me?.summonerSkillId) this.selectedSummonerSkillId = me.summonerSkillId;
 
     if (this.statusLabel) {
-      const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+      const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
       const effectiveHint = this.modeHint || (mode === 'pve_roguelite' ? 'Roguelite: starting character locked, gain rewards through stages.' : '');
       const hint = effectiveHint ? `\n${effectiveHint}` : '';
       this.statusLabel.string = `${this.lobbyTitle}\nRoom ${room.id} | ${mode} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}${hint}`;
@@ -290,14 +290,27 @@ export class LobbyScene extends Component {
   }
 
   private renderDuoSlotPicker(room: Room): void {
-    const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
     if (mode !== 'duo_2v2') {
       this.duoSlotPicker?.node.destroy();
       this.duoSlotPicker = null;
       return;
     }
 
-    if (!this.duoSlotPickerPrefab) return;
+    if (!this.duoSlotPickerPrefab) {
+      // Fallback: create two plain buttons for duo slot selection
+      if (!this.duoSlotPicker?.node?.isValid) {
+        const pickerNode = new Node('DuoSlotPickerFallback');
+        this.node.addChild(pickerNode);
+        pickerNode.setPosition(new Vec3(0, -525, 0));
+        const t = pickerNode.addComponent(UITransform);
+        t.setContentSize(640, 150);
+        this.duoSlotPicker = pickerNode.addComponent(DuoSlotPicker);
+      }
+      this.duoSlotPicker!.setSlotHandler((slotIndex) => this.chooseDuoSlot(slotIndex));
+      this.duoSlotPicker!.render(room, this.gameManager?.localClientId ?? '', this.selectedCharacterId, this.selectedSummonerSkillId);
+      return;
+    }
     if (!this.duoSlotPicker?.node?.isValid) {
       const node = this.instantiatePrefab(this.duoSlotPickerPrefab, 'DuoSlotPicker', 0, -525, 640, 150, this.node);
       this.duoSlotPicker = node.getComponent(DuoSlotPicker) ?? node.addComponent(DuoSlotPicker);
@@ -308,7 +321,7 @@ export class LobbyScene extends Component {
 
   private chooseDuoSlot(slotIndex: 0 | 1): void {
     const room = this.room;
-    if ((room?.gameMode ?? room?.settings.gameMode) !== 'duo_2v2') return;
+    if ((room?.gameMode ?? room?.settings?.gameMode) !== 'duo_2v2') return;
 
     // Local conflict guard — prevent sending if the character is already used
     const localPlayer = room.players.find(p => p.clientId === this.gameManager?.localClientId || p.controllerId === this.gameManager?.localClientId) ?? room.players[0];
@@ -368,14 +381,22 @@ export class LobbyScene extends Component {
   }
 
   private renderRoomSettingsPanel(room: Room): void {
-    if (!this.roomSettingsPanelPrefab) return;
     if (this.fixedMaxPlayers > 0) {
       this.roomSettingsPanel?.node.destroy();
       this.roomSettingsPanel = null;
       return;
     }
     if (!this.roomSettingsPanel?.node?.isValid) {
-      const node = this.instantiatePrefab(this.roomSettingsPanelPrefab, 'RoomSettingsPanel', 0, -320, 640, 96, this.node);
+      let node: Node;
+      if (this.roomSettingsPanelPrefab) {
+        node = this.instantiatePrefab(this.roomSettingsPanelPrefab, 'RoomSettingsPanel', 0, -320, 640, 96, this.node);
+      } else {
+        node = new Node('RoomSettingsPanel');
+        this.node.addChild(node);
+        node.setPosition(new Vec3(0, -320, 0));
+        const t = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+        t.setContentSize(640, 96);
+      }
       this.roomSettingsPanel = node.getComponent(RoomSettingsPanel) ?? node.addComponent(RoomSettingsPanel);
       this.roomSettingsPanel.setHandlers(
         (maxPlayers) => this.serverActions.updateRoomSettings({ maxPlayers }),
@@ -406,7 +427,7 @@ export class LobbyScene extends Component {
   }
 
   private showModeInfo(): void {
-    const mode = this.room?.gameMode ?? this.room?.settings.gameMode ?? 'classic';
+    const mode = this.room?.gameMode ?? this.room?.settings?.gameMode ?? 'classic';
     this.showInfo(`Mode: ${mode}`, gameModeDescription(mode));
   }
 
@@ -425,7 +446,7 @@ export class LobbyScene extends Component {
   }
 
   private getVisibleCharacters(room: Room): Character[] {
-    const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
     return characterList.filter((character) => {
       if (character.isHidden || character.availability?.hidden) return false;
       if (mode === 'classic') return character.availability?.classic !== false;

@@ -2,6 +2,7 @@ import { _decorator, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame,
 import { titleFromId } from '../../core/DisplayText';
 import { GameManager } from '../../core/GameManager';
 import { getLocalPlayer } from '../../helpers/BattlePlayerHelpers';
+import { getRogueliteBossSkills, rogueliteEnemyTypeLabel } from '../../helpers/RogueliteHelpers';
 import type { Room } from '../../shared/types';
 import { BuffIcon } from '../system/BuffIcon';
 
@@ -17,6 +18,9 @@ export class RogueliteStatusCompact extends Component {
 
   @property({ type: Label })
   hpLabel: Label | null = null;
+
+  @property({ type: Label })
+  enemyLabel: Label | null = null;
 
   @property({ type: Node })
   buffListNode: Node | null = null;
@@ -44,7 +48,7 @@ export class RogueliteStatusCompact extends Component {
 
   render(room: Room): void {
     this.ensureMinimalUi();
-    const isRoguelite = room.gameMode === 'pve_roguelite' || !!room.roguelite;
+    const isRoguelite = (room.gameMode ?? room.settings?.gameMode) === 'pve_roguelite';
     this.node.active = isRoguelite;
     if (!isRoguelite) return;
 
@@ -53,6 +57,17 @@ export class RogueliteStatusCompact extends Component {
     if (this.stageLabel) this.stageLabel.string = run ? `Stage ${run.stage}/${run.maxStage}` : 'Stage -';
     if (this.goldLabel) this.goldLabel.string = `Gold ${run?.runGold ?? 0}`;
     if (this.hpLabel) this.hpLabel.string = player ? `HP ${player.hp}/${player.maxHp}` : 'HP -';
+    if (this.enemyLabel) {
+      const bot = room.players.find(p => p.isBot);
+      if (bot) {
+        const typeLabel = rogueliteEnemyTypeLabel(bot);
+        const traits = getRogueliteBossSkills(bot).length;
+        const traitsHint = traits > 0 ? ` | Traits x${traits}` : '';
+        this.enemyLabel.string = `${typeLabel}${traitsHint}`;
+      } else {
+        this.enemyLabel.string = '';
+      }
+    }
 
     this.renderBuffIcons((run?.appliedRewards ?? []).slice(-3).map((reward) => ({
       id: reward.id,
@@ -78,8 +93,9 @@ export class RogueliteStatusCompact extends Component {
 
     this.stageLabel ??= this.makeLabel('StageLabel', -235, 10, 140, 26, 15);
     this.goldLabel ??= this.makeLabel('GoldLabel', -88, 10, 120, 26, 15);
-    this.hpLabel ??= this.makeLabel('HpLabel', 58, 10, 140, 26, 15);
-    this.buffListNode ??= this.makeNode('BuffList', 190, 0, 230, 42, this.node);
+    this.hpLabel ??= this.makeLabel('HpLabel', 58, 10, 110, 26, 15);
+    this.enemyLabel ??= this.makeLabel('EnemyLabel', 190, 10, 175, 26, 13);
+    this.buffListNode ??= this.makeNode('BuffList', 300, 0, 200, 42, this.node);
   }
 
   private renderBuffIcons(items: { id: string; label: string; count: number }[]): void {

@@ -2,6 +2,7 @@ import { _decorator, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame,
 import { titleFromId } from '../../core/DisplayText';
 import { GameManager } from '../../core/GameManager';
 import { getLocalPlayer } from '../../helpers/BattlePlayerHelpers';
+import { rogueliteEnemyTypeLabel, getRogueliteBossSkills } from '../../helpers/RogueliteHelpers';
 import type { Room } from '../../shared/types';
 import { BuffIcon } from '../system/BuffIcon';
 import { CurrencyBar } from '../system/CurrencyBar';
@@ -69,9 +70,17 @@ export class RogueliteStatusPanel extends Component {
     if (this.hpLabel) this.hpLabel.string = player ? `HP ${player.hp} / ${player.maxHp}` : 'HP -';
     if (this.phaseLabel) this.phaseLabel.string = titleFromId(room.phase);
     if (this.buffLabel) {
+      const enemyParts: string[] = [];
+      const bot = room.players.find(p => p.isBot);
+      if (bot) {
+        enemyParts.push(rogueliteEnemyTypeLabel(bot));
+        const bossSkills = getRogueliteBossSkills(bot);
+        if (bossSkills.length > 0) enemyParts.push(`Traits x${bossSkills.length}`);
+      }
+      const enemyHint = enemyParts.length > 0 ? `[${enemyParts.join(' | ')}] ` : '';
       this.buffLabel.string = recentRewards || passiveCount || perkCount
-        ? `Buffs ${rewards.length + passiveCount + perkCount}: ${recentRewards || 'active'}`
-        : 'Buffs 0';
+        ? `${enemyHint}Buffs ${rewards.length + passiveCount + perkCount}: ${recentRewards || 'active'}`
+        : enemyHint || 'Buffs 0';
     }
     this.currencyBar?.render({
       gold: run?.runGold ?? 0,
@@ -106,9 +115,6 @@ export class RogueliteStatusPanel extends Component {
     this.currencyBar ??= currencyNode.getComponent(CurrencyBar) ?? currencyNode.addComponent(CurrencyBar);
     this.currencyBar.panelFrame = this.panelFrame;
 
-    this.stageLabel ??= null;
-    this.goldLabel ??= null;
-    this.hpLabel ??= null;
     this.phaseLabel ??= this.makeLabel('PhaseLabel', -210, -18, 190, 26, 16);
     this.buffLabel ??= this.makeLabel('BuffLabel', 120, -18, 390, 42, 15);
     this.buffListNode ??= this.makeNode('BuffList', 105, -37, 400, 42);

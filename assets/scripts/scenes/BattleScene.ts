@@ -1,12 +1,15 @@
 import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate, tween, UIOpacity } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
-import { characterName, summonerSkillName } from '../core/DisplayText';
+import { characterName, ruleGuidePlainText, summonerSkillName } from '../core/DisplayText';
+import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
 import { getActor, canTarget, canLocalAct, canResolveDecision, latestEvents, diffFloatingEffects } from '../helpers/BattlePlayerHelpers';
+import { buildRogueliteEnemyDetailVM } from '../helpers/RogueliteHelpers';
 import { ActionSlots } from '../ui/battle/ActionSlots';
 import { BattleLog } from '../ui/battle/BattleLog';
 import { BattleLogDrawer } from '../ui/battle/BattleLogDrawer';
 import { BattleSeat } from '../ui/battle/BattleSeat';
+import { EmoteBar } from '../ui/battle/EmoteBar';
 import { DicePanel } from '../ui/battle/DicePanel';
 import { PlayerDetailDialog } from '../ui/battle/PlayerDetailDialog';
 import { RematchPanel } from '../ui/battle/RematchPanel';
@@ -14,7 +17,7 @@ import { SelfPanel } from '../ui/battle/SelfPanel';
 import { RogueliteStatusCompact } from '../ui/roguelite/RogueliteStatusCompact';
 import { ToastLayer } from '../ui/system/ToastLayer';
 import { InfoDialog } from '../ui/system/InfoDialog';
-import type { Player, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
+import type { EmoteId, Player, PlayerEmoteEvent, RollActionType, RollDecisionAvailableAction, RollDecisionChoice, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
 
@@ -47,6 +50,12 @@ export class BattleScene extends Component {
   @property({ type: Button })
   openDetailButton: Button | null = null;
 
+  @property({ type: Button })
+  enemyDetailButton: Button | null = null;
+
+  @property({ type: Button })
+  helpButton: Button | null = null;
+
   @property({ type: DicePanel })
   dicePanel: DicePanel | null = null;
 
@@ -73,6 +82,12 @@ export class BattleScene extends Component {
 
   @property({ type: RogueliteStatusCompact })
   rogueliteStatusCompact: RogueliteStatusCompact | null = null;
+
+  @property({ type: EmoteBar })
+  emoteBar: EmoteBar | null = null;
+
+  @property({ type: RuleGuidePanel })
+  ruleGuidePanel: RuleGuidePanel | null = null;
 
   @property({ type: Prefab })
   battleSeatPrefab: Prefab | null = null;
@@ -103,6 +118,12 @@ export class BattleScene extends Component {
 
   @property({ type: Prefab })
   infoDialogPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  emoteBarPrefab: Prefab | null = null;
+
+  @property({ type: Prefab })
+  ruleGuidePanelPrefab: Prefab | null = null;
 
   @property({ type: Prefab })
   rogueliteStatusCompactPrefab: Prefab | null = null;
@@ -144,6 +165,7 @@ export class BattleScene extends Component {
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
+  private readonly handlePlayerEmoteReceivedBound = (event: PlayerEmoteEvent) => this.onEmoteReceived(event);
 
   onLoad(): void {
     this.ensureMinimalUi();
@@ -151,9 +173,12 @@ export class BattleScene extends Component {
     this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
+    this.gameManager.onPlayerEmote(this.handlePlayerEmoteReceivedBound, this);
     this.rollButton?.node.on(Button.EventType.CLICK, this.rollDice, this);
     this.openLogButton?.node.on(Button.EventType.CLICK, this.openBattleLogDrawer, this);
     this.openDetailButton?.node.on(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
+    this.enemyDetailButton?.node.on(Button.EventType.CLICK, this.openEnemyDetail, this);
+    this.helpButton?.node.on(Button.EventType.CLICK, this.openRuleGuide, this);
 
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
@@ -164,9 +189,12 @@ export class BattleScene extends Component {
     this.clearPendingLock();
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
+    this.gameManager?.offPlayerEmote(this.handlePlayerEmoteReceivedBound, this);
     this.rollButton?.node.off(Button.EventType.CLICK, this.rollDice, this);
     this.openLogButton?.node.off(Button.EventType.CLICK, this.openBattleLogDrawer, this);
     this.openDetailButton?.node.off(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
+    this.enemyDetailButton?.node.off(Button.EventType.CLICK, this.openEnemyDetail, this);
+    this.helpButton?.node.off(Button.EventType.CLICK, this.openRuleGuide, this);
   }
 
   private render(room: Room): void {
@@ -201,6 +229,17 @@ export class BattleScene extends Component {
     }
     if (this.rogueliteStatusCompact) {
       this.rogueliteStatusCompact.render(room);
+    }
+
+    // Enemy detail button only visible in pve_roguelite
+    if (this.enemyDetailButton) {
+      const isRoguelite = (room.gameMode ?? room.settings?.gameMode) === 'pve_roguelite';
+      this.enemyDetailButton.node.active = isRoguelite;
+    }
+
+    // Emote bar hidden during gameOver
+    if (this.emoteBar) {
+      this.emoteBar.node.active = room.phase !== 'gameOver';
     }
 
     const actor = this.getActor(room);
@@ -271,7 +310,8 @@ export class BattleScene extends Component {
 
   private selectTarget(targetId: string): void {
     if (!this.room || !this.canLocalAct(this.room) || this.pendingAction) return;
-    this.serverActions.selectTarget(targetId);
+    this.setPendingLock();
+    this.serverActions.selectTarget(targetId, (response) => this.clearPendingOnAckFailure(response));
   }
 
   private rollDice(): void {
@@ -288,7 +328,7 @@ export class BattleScene extends Component {
       if (guardActor && (guardActor.clientId === clientId || guardActor.controllerId === clientId)) {
         this.setPendingLock();
         this.dicePanel?.startRoll('guard');
-        this.serverActions.rollGuardCheck();
+        this.serverActions.rollGuardCheck((response) => this.clearPendingOnAckFailure(response));
         return;
       }
     }
@@ -306,25 +346,34 @@ export class BattleScene extends Component {
     this.setPendingLock();
     this.dicePanel?.startRoll('normal');
 
-    const emitRoll = () => this.serverActions.rollDice();
+    const emitRoll = () => this.serverActions.rollDice((response) => this.clearPendingOnAckFailure(response));
     if (actor.selectedTargetId === target.id) {
       emitRoll();
       return;
     }
 
-    this.serverActions.selectTarget(target.id, () => emitRoll());
+    this.serverActions.selectTarget(target.id, (response) => {
+      if (this.clearPendingOnAckFailure(response)) return;
+      emitRoll();
+    });
   }
 
-  /** Lock UI actions while waiting for server ack. Cleared on next room update or 10s timeout. */
+  /** Lock UI actions while waiting for server ack. Cleared on next room update or 8s timeout. */
   private setPendingLock(): void {
     this.pendingAction = true;
     if (this.pendingTimer) clearTimeout(this.pendingTimer);
-    this.pendingTimer = setTimeout(() => this.clearPendingLock(), 10000);
+    this.pendingTimer = setTimeout(() => this.clearPendingLock(), 8000);
   }
 
   private clearPendingLock(): void {
     this.pendingAction = false;
     if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null; }
+  }
+
+  private clearPendingOnAckFailure(response: unknown): boolean {
+    const failed = !!response && typeof response === 'object' && (response as { ok?: unknown }).ok === false;
+    if (failed) this.clearPendingLock();
+    return failed;
   }
 
   /** Unified action confirm — called by ActionSlots.onConfirm. Owns lock/emit/unlock. */
@@ -345,7 +394,7 @@ export class BattleScene extends Component {
       skillId: action?.skillId,
       summonerSkillId: actionType === 'summoner_skill' ? action?.skillId as SummonerSkillId : undefined,
       selfDamageAmount: action?.requiresSelfDamageAmount ? selfDamageAmount : undefined,
-    });
+    }, (response) => this.clearPendingOnAckFailure(response));
   }
 
   showInfo(title: string, body: string): void {
@@ -386,6 +435,60 @@ export class BattleScene extends Component {
         player.isDead ? 'Status: Dead' : `Status: ${player.isOnline === false ? 'Offline' : 'Active'}`,
       ].join('\n');
       this.showInfo(player.nickname, body);
+    }
+  }
+
+  /** Open enemy/boss detail in InfoDialog. Only called in pve_roguelite. */
+  private openEnemyDetail(): void {
+    if (!this.room) return;
+    // Lazy-create InfoDialog if needed
+    if (this.infoDialogPrefab && !this.infoDialog?.node?.isValid) {
+      const node = this.ensurePrefabNode('InfoDialog', this.infoDialogPrefab, 0, 20, 520, 440, this.node);
+      node.setSiblingIndex(998);
+      this.infoDialog = node.getComponent(InfoDialog) ?? node.addComponent(InfoDialog);
+    }
+    if (!this.infoDialog) return;
+
+    const vm = buildRogueliteEnemyDetailVM(this.room);
+    if (!vm.hasData) {
+      this.gameManager?.showToast('No enemy data available.', 1.4);
+      return;
+    }
+
+    const sections = [
+      { heading: 'Type', content: `${vm.typeLabel} (${vm.stageType})` },
+      { heading: 'Stage', content: `Stage ${vm.stage}` },
+      { heading: 'HP / Shield', content: `${vm.hp} / ${vm.maxHp} HP  |  Shield ${vm.shield}` },
+    ];
+    if (vm.traits.length > 0) {
+      sections.push({ heading: `Traits (${vm.traits.length})`, content: vm.traitDescriptions.slice(0, 5).join(' | ') });
+    }
+    if (vm.bossStateChips.length > 0) {
+      sections.push({
+        heading: 'Boss State',
+        content: vm.bossStateChips.map(c => `${c.text} [${c.kind}]`).join(' | '),
+      });
+    }
+    if (vm.enemyTemplateId) {
+      sections.push({ heading: 'Template ID', content: vm.enemyTemplateId });
+    }
+    if (vm.bossId) {
+      sections.push({ heading: 'Boss ID', content: vm.bossId });
+    }
+
+    this.infoDialog?.show(
+      `${vm.name} — ${vm.typeLabel}`,
+      vm.description,
+      sections,
+    );
+  }
+
+  /** Open rule guide panel or fallback to InfoDialog. */
+  private openRuleGuide(): void {
+    if (this.ruleGuidePanel) {
+      this.ruleGuidePanel.open();
+    } else {
+      this.showInfo('Rule Guide', ruleGuidePlainText());
     }
   }
 
@@ -449,7 +552,6 @@ export class BattleScene extends Component {
     this.ensureBattleSeat(enemySeatNode, 1);
 
     this.phaseLabel ??= this.ensureLabel('PhaseLabel', 0, 545, 680, 64, 20, this.node);
-    this.playersLabel ??= null;
     this.targetListNode ??= this.ensureNode('TargetList', 0, 190, 660, 70, this.node);
     const dicePanelNode = this.ensurePrefabNode('DicePanelNode', this.dicePanelPrefab, 0, 70, 320, 210, this.node);
     this.dicePanel ??= dicePanelNode.getComponent(DicePanel) ?? dicePanelNode.addComponent(DicePanel);
@@ -470,10 +572,11 @@ export class BattleScene extends Component {
     const battleLogNode = this.ensurePrefabNode('BattleLog', this.battleLogPrefab, 0, -520, 650, 150, this.node);
     this.battleLog ??= battleLogNode.getComponent(BattleLog) ?? battleLogNode.addComponent(BattleLog);
     this.battleLog.maxLines = 6;
-    this.logLabel ??= null;
 
-    this.openDetailButton ??= this.createButton('OpenDetailButton', 'Detail', -105, -610, 130, 44, 17, this.node);
-    this.openLogButton ??= this.createButton('OpenLogButton', 'Log', 105, -610, 130, 44, 17, this.node);
+    this.openDetailButton ??= this.createButton('OpenDetailButton', 'Detail', -190, -590, 100, 40, 16, this.node);
+    this.enemyDetailButton ??= this.createButton('EnemyDetailButton', 'Enemy', -45, -590, 100, 40, 16, this.node);
+    this.enemyDetailButton.node.active = false;
+    this.openLogButton ??= this.createButton('OpenLogButton', 'Log', 105, -590, 100, 40, 16, this.node);
 
     const detailNode = this.ensurePrefabNode('PlayerDetailDialog', this.playerDetailDialogPrefab, 0, 20, 620, 430, this.node);
     this.playerDetailDialog ??= detailNode.getComponent(PlayerDetailDialog) ?? detailNode.addComponent(PlayerDetailDialog);
@@ -503,6 +606,28 @@ export class BattleScene extends Component {
     this.rogueliteStatusCompact.panelFrame = this.actionFrame ?? this.seatFrame;
     this.rogueliteStatusCompact.buffIconPrefab = this.buffIconPrefab;
     compactNode.active = false;
+
+    const emoteNode = this.ensurePrefabNode('EmoteBar', this.emoteBarPrefab, 0, -410, 620, 56, this.node);
+    this.emoteBar ??= emoteNode.getComponent(EmoteBar) ?? emoteNode.addComponent(EmoteBar);
+    this.emoteBar.buttonFrame = this.actionFrame;
+    this.emoteBar.onSendEmote = (emoteId: EmoteId) => {
+      this.serverActions.sendEmote(emoteId, (response: unknown) => {
+        const ack = response as { ok?: boolean };
+        if (ack?.ok === false) {
+          this.emoteBar?.resetCooldown();
+          this.gameManager?.showToast('Emote failed — try again.', 1.4);
+        }
+      });
+    };
+
+    // Rule guide panel (lazy)
+    const guideNode = this.ensurePrefabNode('RuleGuidePanel', this.ruleGuidePanelPrefab, 0, 20, 620, 520, this.node);
+    this.ruleGuidePanel ??= guideNode.getComponent(RuleGuidePanel) ?? guideNode.addComponent(RuleGuidePanel);
+    this.ruleGuidePanel.panelFrame = this.parchmentFrame;
+    this.ruleGuidePanel.buttonFrame = this.actionFrame;
+    guideNode.setSiblingIndex(998);
+
+    this.helpButton ??= this.createButton('HelpButton', '?', -295, -590, 44, 40, 20, this.node);
   }
 
   private ensureBattleSeat(node: Node, playerIndex: number): void {
@@ -510,6 +635,28 @@ export class BattleScene extends Component {
     seat.playerIndex = playerIndex;
     seat.seatFrame = this.seatFrame;
     seat.selectedFrame = this.actionFrame ?? this.seatFrame;
+    seat.onSelectActor = (playerId: string) => this.handleSeatSelectActor(playerId);
+    seat.onSelectTarget = (playerId: string) => this.handleSeatSelectTarget(playerId);
+  }
+
+  /** Unified handler for seat actor selection — goes through BattleScene lock chain. */
+  private handleSeatSelectActor(playerId: string): void {
+    if (!this.room || this.pendingAction) return;
+    if (!canLocalAct(this.room, this.gameManager?.localClientId ?? '')) return;
+    this.setPendingLock();
+    this.serverActions.selectActor(playerId, (response) => this.clearPendingOnAckFailure(response));
+  }
+
+  /** Unified handler for seat target selection — goes through BattleScene lock chain. */
+  private handleSeatSelectTarget(playerId: string): void {
+    if (!this.room || this.pendingAction) return;
+    const clientId = this.gameManager?.localClientId ?? '';
+    if (!canLocalAct(this.room, clientId)) return;
+    const actor = getActor(this.room);
+    const target = this.room.players.find(p => p.id === playerId);
+    if (!actor || !target || !canTarget(actor, target)) return;
+    this.setPendingLock();
+    this.serverActions.selectTarget(playerId, (response) => this.clearPendingOnAckFailure(response));
   }
 
   private ensurePrefabNode(name: string, prefab: Prefab | null, x: number, y: number, width: number, height: number, parent: Node): Node {
@@ -656,6 +803,63 @@ export class BattleScene extends Component {
       .delay(0.5)
       .to(0.7, { opacity: 0 })
       .call(() => labelNode.destroy())
+      .start();
+  }
+
+  // ── Emotes ──
+
+  /** Handle incoming emote from another player. */
+  private onEmoteReceived(event: PlayerEmoteEvent): void {
+    if (!this.room) return;
+    const player = this.room.players.find(
+      p => p.id === event.playerId || p.clientId === event.playerId || p.controllerId === event.playerId
+    );
+    const emoji = this.emoteBar?.addIncoming(event.playerId, event.emoteId) ?? event.emoteId;
+    if (player) {
+      this.spawnEmoteFloat(player.id, emoji);
+    } else {
+      // Fallback: show as center-screen brief message
+      this.spawnEmoteFloat('', emoji);
+    }
+  }
+
+  /** Show a floating emote bubble near the player's seat. Auto-destroys after animation. */
+  private spawnEmoteFloat(playerId: string, emoji: string): void {
+    const labelNode = new Node(`Emote_${playerId || 'center'}_${Date.now()}`);
+    this.node.addChild(labelNode);
+
+    // Position near player seat or center
+    const playerIdx = playerId
+      ? (this.room?.players.findIndex(p => p.id === playerId) ?? -1)
+      : -1;
+    const x = playerIdx >= 0
+      ? (playerIdx - ((this.room?.players.length ?? 1) - 1) / 2) * 180
+      : 0;
+    labelNode.setPosition(new Vec3(x, 40, 0));
+    labelNode.setSiblingIndex(990);
+
+    const transform = labelNode.addComponent(UITransform);
+    transform.setContentSize(120, 40);
+
+    const label = labelNode.addComponent(Label);
+    label.fontSize = 32;
+    label.lineHeight = 36;
+    label.enableWrapText = false;
+    label.color = new Color(255, 238, 155, 255);
+    label.string = emoji;
+
+    const opacity = labelNode.addComponent(UIOpacity);
+    opacity.opacity = 255;
+
+    tween(labelNode)
+      .by(1.2, { position: new Vec3(0, 70, 0) })
+      .start();
+    tween(opacity)
+      .delay(0.6)
+      .to(0.6, { opacity: 0 })
+      .call(() => {
+        if (labelNode?.isValid) labelNode.destroy();
+      })
       .start();
   }
 }

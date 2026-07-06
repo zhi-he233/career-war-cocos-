@@ -1,30 +1,7 @@
 import { _decorator, Button, Color, Component, Label, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { RULE_GUIDE_PAGES } from '../../core/DisplayText';
 
 const { ccclass, property } = _decorator;
-
-interface RulePage {
-  title: string;
-  body: string;
-}
-
-const RULE_PAGES: RulePage[] = [
-  {
-    title: 'Basic Flow',
-    body: 'Choose a mode, enter a lobby, pick a character and summoner skill, then start battle. The server owns the real game result; the client only sends choices and renders state.',
-  },
-  {
-    title: 'Dice And Attack',
-    body: 'On your turn, select a valid target and roll. The roll creates available actions. Pick normal attack, character skill, or summoner skill if it is available.',
-  },
-  {
-    title: 'Characters',
-    body: 'Each character has a different timing window. Some react to low rolls, some heal, some guard, and some add damage. The battle action buttons will only light up when the server says they are usable.',
-  },
-  {
-    title: 'Roguelite',
-    body: 'After roguelite battles, choose rewards, events, shops, rests, or the next route node. Gold, stage, HP, and buffs are shown in the roguelite status panel.',
-  },
-];
 
 @ccclass('RuleGuidePanel')
 export class RuleGuidePanel extends Component {
@@ -69,7 +46,7 @@ export class RuleGuidePanel extends Component {
   }
 
   open(pageIndex = 0): void {
-    this.pageIndex = Math.max(0, Math.min(RULE_PAGES.length - 1, pageIndex));
+    this.pageIndex = Math.max(0, Math.min(RULE_GUIDE_PAGES.length - 1, pageIndex));
     this.node.active = true;
     this.node.setSiblingIndex(999);
     this.render();
@@ -85,18 +62,18 @@ export class RuleGuidePanel extends Component {
   }
 
   private nextPage(): void {
-    this.pageIndex = Math.min(RULE_PAGES.length - 1, this.pageIndex + 1);
+    this.pageIndex = Math.min(RULE_GUIDE_PAGES.length - 1, this.pageIndex + 1);
     this.render();
   }
 
   private render(): void {
     this.ensureMinimalUi();
-    const page = RULE_PAGES[this.pageIndex];
+    const page = RULE_GUIDE_PAGES[this.pageIndex];
     if (this.titleLabel) this.titleLabel.string = page.title;
     if (this.bodyLabel) this.bodyLabel.string = page.body;
-    if (this.pageLabel) this.pageLabel.string = `${this.pageIndex + 1} / ${RULE_PAGES.length}`;
+    if (this.pageLabel) this.pageLabel.string = `${this.pageIndex + 1} / ${RULE_GUIDE_PAGES.length}`;
     if (this.prevButton) this.prevButton.interactable = this.pageIndex > 0;
-    if (this.nextButton) this.nextButton.interactable = this.pageIndex < RULE_PAGES.length - 1;
+    if (this.nextButton) this.nextButton.interactable = this.pageIndex < RULE_GUIDE_PAGES.length - 1;
   }
 
   private ensureMinimalUi(): void {
@@ -159,10 +136,18 @@ export class RuleGuidePanel extends Component {
       sprite.color = new Color(201, 157, 84, 255);
     }
 
-    const label = this.makeLabel('Label', 0, 0, width, height, fontSize);
-    label.node.parent = node;
-    label.node.setPosition(Vec3.ZERO);
+    // Create label as child of button node, not on this.node (avoids Prev/Next/Close sharing one 'Label')
+    const labelNode = node.getChildByName('Label') ?? new Node('Label');
+    if (!labelNode.parent) node.addChild(labelNode);
+    labelNode.setPosition(Vec3.ZERO);
+    const lt = labelNode.getComponent(UITransform) ?? labelNode.addComponent(UITransform);
+    lt.setContentSize(width, height);
+    const label = labelNode.getComponent(Label) ?? labelNode.addComponent(Label);
     label.string = text;
+    label.fontSize = fontSize;
+    label.lineHeight = fontSize + 7;
+    label.enableWrapText = true;
+    label.color = new Color(57, 34, 17, 255);
     return button;
   }
 }

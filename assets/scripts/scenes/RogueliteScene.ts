@@ -1,8 +1,10 @@
-import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate } from 'cc';
+import { _decorator, Button, Color, Component, Graphics, Label, Node, Prefab, Sprite, SpriteFrame, UITransform, Vec3, instantiate } from 'cc';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
-import { titleFromId } from '../core/DisplayText';
-import { buildRogueliteRewardOption } from '../helpers/RogueliteHelpers';
+import { ruleGuidePlainText, titleFromId } from '../core/DisplayText';
+import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
+import { buildRogueliteRewardOption, buildRouteMapView, roomTypeDescription } from '../helpers/RogueliteHelpers';
+import type { RouteMapVM, RouteNodeVM } from '../models/ViewModels';
 import { EventChoiceCard } from '../ui/roguelite/EventChoiceCard';
 import type { EventChoiceCardState } from '../ui/roguelite/EventChoiceCard';
 import { RewardCard } from '../ui/roguelite/RewardCard';
@@ -89,6 +91,15 @@ export class RogueliteScene extends Component {
   @property({ type: ToastLayer })
   toastLayer: ToastLayer | null = null;
 
+  @property({ type: RuleGuidePanel })
+  ruleGuidePanel: RuleGuidePanel | null = null;
+
+  @property({ type: Prefab })
+  ruleGuidePanelPrefab: Prefab | null = null;
+
+  @property({ type: Button })
+  helpButton: Button | null = null;
+
   private infoDialog: InfoDialog | null = null;
 
   private gameManager: GameManager | null = null;
@@ -109,6 +120,7 @@ export class RogueliteScene extends Component {
     this.serverActions = new ServerActions(this.gameManager);
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
+    this.helpButton?.node.on(Button.EventType.CLICK, this.openRuleGuide, this);
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
     if (room) this.render(room);
@@ -117,6 +129,7 @@ export class RogueliteScene extends Component {
   onDestroy(): void {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
+    this.helpButton?.node.off(Button.EventType.CLICK, this.openRuleGuide, this);
   }
 
   private render(room: Room): void {
@@ -154,6 +167,7 @@ export class RogueliteScene extends Component {
   private renderActions(room: Room): void {
     if (!this.actionListNode) return;
     this.clearChildren(this.actionListNode);
+    this.actionListNode.getComponent(Graphics)?.clear();
 
     const run = room.roguelite;
     if (!run) {
@@ -401,27 +415,43 @@ export class RogueliteScene extends Component {
     }
 
     if (room.phase === 'roguelite_continue') {
-      const nodes = this.getNextRouteNodes(room);
+      const routeVM = buildRouteMapView(room);
+      const locked = !!this.pendingRouteNodeId;
+      const availableNodes = routeVM.availableNodes;
+
+      if (availableNodes.length === 0) {
+        this.createText('No route choices available.', 0, 70);
+      }
+
       if (this.mapNodePrefab) {
-        this.createRouteMap(this.mapNodePrefab, room, nodes);
+        this.renderRouteMap(this.mapNodePrefab, routeVM, locked);
       } else {
-        nodes.forEach((mapNode, index) => {
+        // Fallback: plain buttons without map node prefab
+        if (routeVM.clearedNode) {
+          this.createText(`Cleared: Stage ${routeVM.clearedNode.stage} — ${routeVM.clearedNode.typeLabel}`, 0, 125);
+        }
+        availableNodes.forEach((node, index) => {
+          const isPending = this.pendingRouteNodeId === node.id;
+          const statusLabel = isPending ? ' [SELECTING...]' : locked ? ' [LOCKED]' : '';
           const button = this.createButton(
-            `Route_${mapNode.id}`,
-            `Stage ${mapNode.stage} | ${titleFromId(mapNode.type)} | ${mapNode.id}`,
+            `Route_${node.id}`,
+            `Stage ${node.stage} | ${node.typeLabel} | ${node.id}${statusLabel}`,
             0,
-            105 - index * 68,
+            60 - index * 60,
             620,
-            56,
-            17,
-            this.actionListNode!
+            48,
+            15,
+            this.actionListNode!,
           );
-          button.interactable = !this.pendingRouteNodeId;
-          button.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
+          button.interactable = !locked;
+          button.node.on(Button.EventType.CLICK, () => this.continueRoguelite(this.toSelection(node)), this);
+        });
+        routeVM.previewNodes.forEach((node, index) => {
+          this.createText(`Preview: Stage ${node.stage} — ${node.typeLabel}`, 0, -80 - index * 28);
         });
       }
-      const finish = this.createButton('FinishRun', 'Finish Run', 0, -170, 260, 54, 20, this.actionListNode);
-      finish.interactable = !this.pendingRouteNodeId;
+      const finish = this.createButton('FinishRun', 'Finish Run', 0, -175, 260, 54, 20, this.actionListNode);
+      finish.interactable = !locked;
       finish.node.on(Button.EventType.CLICK, () => this.finishRogueliteRun(), this);
       return;
     }
@@ -683,6 +713,15 @@ export class RogueliteScene extends Component {
     );
   }
 
+  /** Open rule guide panel or fallback to InfoDialog. */
+  private openRuleGuide(): void {
+    if (this.ruleGuidePanel) {
+      this.ruleGuidePanel.open();
+    } else if (this.infoDialog) {
+      this.infoDialog.show('Rule Guide', ruleGuidePlainText());
+    }
+  }
+
   private isAckFailure(response: unknown): boolean {
     return !!response && typeof response === 'object' && (response as { ok?: unknown }).ok === false;
   }
@@ -701,83 +740,142 @@ export class RogueliteScene extends Component {
     return layer.filter((node) => connectedIds.has(node.id)).map((node) => this.toSelection(node));
   }
 
-  private toSelection(node: { id: string; stage: number; type: RogueliteMapNodeSelection['type']; enemyTemplateId?: string; bossTemplateId?: string }): RogueliteMapNodeSelection {
+  private toSelection(node: { id: string; stage: number; type: string; enemyTemplateId?: string; bossTemplateId?: string }): RogueliteMapNodeSelection {
     return {
       id: node.id,
       stage: node.stage,
-      type: node.type,
+      type: node.type as RogueliteMapNodeSelection['type'],
       enemyTemplateId: node.enemyTemplateId,
       bossTemplateId: node.bossTemplateId,
     };
   }
 
-  private createRouteMap(prefab: Prefab, room: Room, availableNodes: RogueliteMapNodeSelection[]): void {
-    const run = room.roguelite;
-    const nextStage = Math.max(1, run?.stage ?? 1);
-    this.createText('Route', 0, 198);
+  private renderRouteMap(prefab: Prefab, routeVM: RouteMapVM, locked: boolean): void {
+    this.createText(`Stage ${routeVM.stage} — Choose Next`, 0, 195);
 
-    const previousStage = nextStage - 1;
-    const previousId = previousStage > 0 ? run?.mapRoute?.[previousStage] ?? run?.currentMapNode?.id : '';
-    if (previousId) {
-      const previousNode = this.findMapNodeSelection(previousStage, previousId, run?.currentMapNode);
-      if (previousNode) {
-        const node = this.createMapNode(
-          prefab,
-          `Cleared_${previousNode.id}`,
-          this.mapNodeX(previousNode, 0, 1),
-          126,
-          previousNode.id,
-          `Stage ${previousNode.stage}`,
-          previousNode.type,
-          'cleared'
-        );
-        const button = node.getComponent(Button);
-        if (button) button.interactable = false;
+    const clearedY = 132;
+    const nodeY = 24;
+    const previewY = -88;
+
+    // Cleared node
+    let clearedX = 0;
+    if (routeVM.clearedNode) {
+      clearedX = this.mapNodeScreenX(routeVM.clearedNode, 0, 1);
+      const node = this.createMapNode(
+        prefab,
+        `Cleared_${routeVM.clearedNode.id}`,
+        clearedX, clearedY,
+        routeVM.clearedNode.id,
+        `S${routeVM.clearedNode.stage} ${routeVM.clearedNode.typeLabel}`,
+        routeVM.clearedNode.type,
+        'cleared',
+      );
+      node.getComponent(Button)?.node.on(Button.EventType.CLICK, () => this.showMapNodeInfo(routeVM.clearedNode!), this);
+    }
+
+    // Available nodes
+    const availableXs: number[] = [];
+    routeVM.availableNodes.forEach((node, index) => {
+      const x = this.mapNodeScreenX(node, index, routeVM.availableNodes.length);
+      availableXs.push(x);
+      const isPending = this.pendingRouteNodeId === node.id;
+      const status: RogueliteMapNodeStatus = isPending ? 'current' : locked ? 'locked' : 'available';
+      const mapNode = this.createMapNode(
+        prefab,
+        `Route_${node.id}`,
+        x, nodeY,
+        node.id,
+        `S${node.stage} ${node.typeLabel}`,
+        node.type,
+        status,
+      );
+      const button = mapNode.getComponent(Button);
+      if (button) button.interactable = !locked;
+      button?.node.on(Button.EventType.CLICK, () => this.continueRoguelite(this.toSelection(node)), this);
+      const card = mapNode.getComponent(RogueliteMapNode);
+      if (card) card.onInfo = () => this.showMapNodeInfo(node);
+    });
+
+    // Preview nodes
+    const previewXs: number[] = [];
+    routeVM.previewNodes.forEach((node, index) => {
+      const x = this.mapNodeScreenX(node, index, routeVM.previewNodes.length);
+      previewXs.push(x);
+      const mapNode = this.createMapNode(
+        prefab,
+        `Preview_${node.id}`,
+        x, previewY,
+        node.id,
+        `S${node.stage} ${node.typeLabel}`,
+        node.type,
+        'preview',
+      );
+      const button = mapNode.getComponent(Button);
+      if (button) button.interactable = false;
+      const card = mapNode.getComponent(RogueliteMapNode);
+      if (card) card.onInfo = () => this.showMapNodeInfo(node);
+    });
+
+    // Draw edges
+    this.drawRouteEdges(clearedX, clearedY, availableXs, nodeY, previewXs, previewY, locked);
+  }
+
+  /** Draw connection lines between route nodes using Graphics. */
+  private drawRouteEdges(
+    clearedX: number, clearedY: number,
+    availableXs: number[], nodeY: number,
+    previewXs: number[], previewY: number,
+    _locked: boolean,
+  ): void {
+    if (!this.actionListNode) return;
+    const graphics = this.actionListNode.getComponent(Graphics)
+      ?? this.actionListNode.addComponent(Graphics);
+    graphics.clear();
+    graphics.lineWidth = 2.5;
+
+    // Cleared → Available (gold)
+    if (availableXs.length > 0) {
+      graphics.strokeColor = new Color(211, 168, 78, 200);
+      for (const ax of availableXs) {
+        graphics.moveTo(clearedX, clearedY - 46);
+        graphics.lineTo(ax, nodeY + 46);
+        graphics.stroke();
       }
     }
 
-    availableNodes.forEach((mapNode, index) => {
-      const selected = this.pendingRouteNodeId === mapNode.id;
-      const status: RogueliteMapNodeStatus = selected ? 'current' : this.pendingRouteNodeId ? 'locked' : 'available';
-      const node = this.createMapNode(
-        prefab,
-        `Route_${mapNode.id}`,
-        this.mapNodeX(mapNode, index, availableNodes.length),
-        18,
-        mapNode.id,
-        `Stage ${mapNode.stage}`,
-        mapNode.type,
-        status
-      );
-      const button = node.getComponent(Button);
-      if (button) button.interactable = !this.pendingRouteNodeId;
-      button?.node.on(Button.EventType.CLICK, () => this.continueRoguelite(mapNode), this);
-    });
-
-    const previewLayer = createRogueliteMapLayer(nextStage + 1).slice(0, 4);
-    previewLayer.forEach((mapNode, index) => {
-      const node = this.createMapNode(
-        prefab,
-        `Preview_${mapNode.id}`,
-        this.mapNodeX(mapNode, index, previewLayer.length),
-        -92,
-        mapNode.id,
-        `Stage ${mapNode.stage}`,
-        mapNode.type,
-        'preview'
-      );
-      const button = node.getComponent(Button);
-      if (button) button.interactable = false;
-    });
+    // Available → Preview (light grey, dashed feel via lower alpha)
+    if (previewXs.length > 0) {
+      graphics.strokeColor = new Color(160, 155, 145, 140);
+      graphics.lineWidth = 1.5;
+      for (const ax of availableXs) {
+        for (const px of previewXs) {
+          graphics.moveTo(ax, nodeY - 46);
+          graphics.lineTo(px, previewY + 46);
+          graphics.stroke();
+        }
+      }
+    }
   }
 
-  private findMapNodeSelection(stage: number, id: string, fallback?: RogueliteMapNodeSelection): RogueliteMapNodeSelection | null {
-    if (fallback?.id === id) return fallback;
-    const draft = createRogueliteMapLayer(stage).find((node) => node.id === id);
-    return draft ? this.toSelection(draft) : null;
+  /** Open InfoDialog with map node details. Non-blocking. */
+  private showMapNodeInfo(node: RouteNodeVM): void {
+    if (!this.infoDialog) return;
+    const sections = [
+      { heading: 'Type', content: `${node.typeLabel} (${node.type})` },
+      { heading: 'Stage', content: `Stage ${node.stage}` },
+    ];
+    if (node.enemyTemplateId) sections.push({ heading: 'Enemy', content: node.enemyTemplateId });
+    if (node.bossTemplateId) sections.push({ heading: 'Boss', content: node.bossTemplateId });
+    sections.push({ heading: 'Node ID', content: node.id });
+
+    this.infoDialog.show(
+      `Stage ${node.stage} — ${node.typeLabel}`,
+      node.description,
+      sections,
+    );
   }
 
-  private mapNodeX(node: { id: string; stage: number }, index: number, total: number): number {
+  private mapNodeScreenX(node: { id: string; stage: number }, index: number, total: number): number {
     const draft = createRogueliteMapLayer(node.stage).find((item) => item.id === node.id);
     if (draft) return Math.round((draft.x - 50) * 5.1);
     if (total <= 1) return 0;
@@ -874,6 +972,14 @@ export class RogueliteScene extends Component {
     const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -555, 560, 56, this.node);
     this.toastLayer ??= toastNode.getComponent(ToastLayer) ?? toastNode.addComponent(ToastLayer);
     this.toastLayer.panelFrame = this.statusFrame ?? this.actionCardFrame;
+
+    const guideNode = this.ensurePrefabNode('RuleGuidePanel', this.ruleGuidePanelPrefab, 0, 20, 620, 520, this.node);
+    this.ruleGuidePanel ??= guideNode.getComponent(RuleGuidePanel) ?? guideNode.addComponent(RuleGuidePanel);
+    this.ruleGuidePanel.panelFrame = this.statusFrame ?? this.actionCardFrame;
+    this.ruleGuidePanel.buttonFrame = this.actionCardFrame ?? this.statusFrame;
+    guideNode.setSiblingIndex(998);
+
+    this.helpButton ??= this.createButton('HelpButton', '?', 255, 490, 54, 48, 19, this.node);
 
     const infoNode = this.ensurePrefabNode('InfoDialog', this.infoDialogPrefab, 0, 0, 520, 440, this.node);
     this.infoDialog ??= infoNode.getComponent(InfoDialog) ?? infoNode.addComponent(InfoDialog);

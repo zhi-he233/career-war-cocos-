@@ -173,14 +173,22 @@ export interface BattleLogEntryVM {
   type: string;
 }
 
-// ── Map Node ──
+// ── Map / Route ──
 
-export interface MapNodeVM {
+export interface RouteNodeVM {
   id: string;
+  stage: number;
+  type: string;
   typeLabel: string;
   icon: string;
-  status: 'current' | 'available' | 'pending' | 'preview' | 'locked' | 'cleared';
-  x: number;
-  y: number;
-  connections: string[];
+  description: string;
+  enemyTemplateId?: string;
+  bossTemplateId?: string;
+}
+
+export interface RouteMapVM {
+  stage: number;
+  clearedNode: RouteNodeVM | null;
+  availableNodes: RouteNodeVM[];
+  previewNodes: RouteNodeVM[];
 }

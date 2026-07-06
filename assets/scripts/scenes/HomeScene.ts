@@ -21,6 +21,7 @@ import type { GameMode, Room, RoomListItem } from '../shared/types';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
+import { ruleGuidePlainText } from '../core/DisplayText';
 import { ToastLayer } from '../ui/system/ToastLayer';
 
 const { ccclass, property } = _decorator;
@@ -67,9 +68,6 @@ export class HomeScene extends Component {
   @property({ type: Node })
   roomListNode: Node | null = null;
 
-  @property
-  createDebugUi = false;
-
   @property({ type: [SpriteFrame] })
   diceRollFrames: SpriteFrame[] = [];
 
@@ -102,9 +100,7 @@ export class HomeScene extends Component {
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
-    if (this.createDebugUi) {
-      this.ensureMinimalUi();
-    }
+    this.ensureMinimalUi();
 
     this.clientId = this.getClientId();
     this.gameManager = GameManager.getInstance();
@@ -147,15 +143,7 @@ export class HomeScene extends Component {
       this.ruleGuidePanel.open();
       return;
     }
-    this.showInfoPanel(
-      'Rule Guide',
-      [
-        'Choose a mode, enter a lobby, pick a character and summoner skill, then start battle.',
-        'On your turn, select a target and roll. The server sends the available action choices.',
-        'The server owns all real settlement. The client only displays state and sends your choices.',
-        'In roguelite, win a battle, choose a reward, then continue through event, shop, rest, or route stages.',
-      ].join('\n')
-    );
+    this.showInfoPanel('Rule Guide', ruleGuidePlainText());
   }
 
   openProfile(): void {

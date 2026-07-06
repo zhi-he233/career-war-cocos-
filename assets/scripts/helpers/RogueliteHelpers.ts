@@ -15,12 +15,18 @@ import {
   ROGUELITE_STARTER_REWARDS,
   ROGUELITE_STAGE_SCALING,
 } from '../shared/data/rogueliteBalance';
+import { createRogueliteMapLayer, getRogueliteConnectedNodeIds, getRogueliteMapNodeId } from '../shared/data/rogueliteMapRules';
+import type { RogueliteMapNodeDraft } from '../shared/data/rogueliteMapRules';
+import { ROGUELITE_ROOM_TYPES } from '../shared/data/rogueliteRoomTypes';
+import { rogueliteBossDescription, rogueliteEnemyDescription, rogueliteTraitDescription } from '../core/DisplayText';
 import type { Player, Room, RogueliteReward } from '../shared/types';
 import type {
   RoguelitePanelVM,
   RogueliteBossStateChip,
   RoguelitePerkVM,
   RogueliteRewardOptionVM,
+  RouteNodeVM,
+  RouteMapVM,
 } from '../models/ViewModels';
 
 // ── Reward classification sets ──
@@ -222,7 +228,7 @@ export function buildRoguelitePanelVM(
 ): RoguelitePanelVM {
   const run = room.roguelite;
   const stage = run?.stage ?? 1;
-  const isRoguelite = room.gameMode === 'pve_roguelite';
+  const isRoguelite = (room.gameMode ?? room.settings?.gameMode) === 'pve_roguelite';
   const me = room.players.find(p => p.id === playerId || p.clientId === playerId);
   const bot = room.players.find(p => p.isBot);
   const isBoss = rogueliteStageType(stage) === 'boss';
@@ -306,8 +312,147 @@ function getRoguelitePhaseText(room: Room, playerId: string): string {
   if (room.phase === 'roguelite_shop') return 'Shop';
   if (room.phase === 'roguelite_rest') return 'Rest';
   if (room.phase === 'gameOver') {
-    if (room.gameMode === 'duo_2v2' && room.winnerTeamId) return `${room.winnerTeamId} Team Wins`;
+    if ((room.gameMode ?? room.settings?.gameMode) === 'duo_2v2' && room.winnerTeamId) return `${room.winnerTeamId} Team Wins`;
     return room.winnerId === playerId ? 'Victory' : 'Defeat';
   }
   return 'In Battle';
+}
+
+// ── Enemy / Boss Detail ──
+
+export interface RogueliteEnemyDetailVM {
+  name: string;
+  typeLabel: string;
+  stageType: string;
+  description: string;
+  hp: number;
+  maxHp: number;
+  shield: number;
+  traits: string[];
+  traitDescriptions: string[];
+  bossStateChips: { key: string; text: string; kind: string }[];
+  bossId?: string;
+  enemyTemplateId?: string;
+  stage: number;
+  hasData: boolean;
+}
+
+/** Build an enemy/boss detail VM from room state. Returns a fallback VM when no data. */
+export function buildRogueliteEnemyDetailVM(room: Room): RogueliteEnemyDetailVM {
+  const run = room.roguelite;
+  const bot = room.players.find(p => p.isBot);
+  const stage = run?.stage ?? 1;
+
+  if (!bot) {
+    return {
+      name: 'Unknown Enemy',
+      typeLabel: 'Enemy',
+      stageType: 'normal',
+      description: 'No enemy data available.',
+      hp: 0, maxHp: 0, shield: 0,
+      traits: [], traitDescriptions: [],
+      bossStateChips: [],
+      stage,
+      hasData: false,
+    };
+  }
+
+  const info = bot.rogueliteEnemyInfo;
+  const bossId = bot.rogueliteBossId;
+  const typeLabel = rogueliteEnemyTypeLabel(bot);
+  const stageType = info?.stageType ?? (bossId ? 'boss' : 'normal');
+  const enemyTemplateId = info?.enemyTemplateId;
+  const description = bossId
+    ? rogueliteBossDescription(bossId)
+    : enemyTemplateId
+      ? info?.description || rogueliteEnemyDescription(enemyTemplateId)
+      : info?.description || '';
+  const traits = getRogueliteBossSkills(bot);
+  const traitDescriptions = traits.map(t => rogueliteTraitDescription(t));
+  const bossStateChips = getRogueliteBossStateChips(bot);
+
+  return {
+    name: bot.nickname,
+    typeLabel,
+    stageType,
+    description: description || `Stage ${stage} ${typeLabel}.`,
+    hp: bot.hp,
+    maxHp: bot.maxHp,
+    shield: bot.shield,
+    traits,
+    traitDescriptions,
+    bossStateChips,
+    bossId: bossId || undefined,
+    enemyTemplateId: info?.enemyTemplateId,
+    stage,
+    hasData: true,
+  };
+}
+
+// ── Route Map ──
+
+/** Human-readable description for a room type. Falls back to the type string. */
+export function roomTypeDescription(type: string): string {
+  return ROGUELITE_ROOM_TYPES[type as keyof typeof ROGUELITE_ROOM_TYPES]?.description ?? `A ${type} room.`;
+}
+
+/** Build the route map ViewModel from room state. Pure function, no side effects. */
+export function buildRouteMapView(room: Room): RouteMapVM {
+  const run = room.roguelite;
+  const stage = Math.max(1, run?.stage ?? 1);
+
+  const vm: RouteMapVM = {
+    stage,
+    clearedNode: null,
+    availableNodes: [],
+    previewNodes: [],
+  };
+
+  // Cleared node (previous stage)
+  const previousStage = stage - 1;
+  if (previousStage > 0) {
+    const previousId = run?.mapRoute?.[previousStage] ?? run?.currentMapNode?.id;
+    if (previousId) {
+      const draft = createRogueliteMapLayer(previousStage).find((n) => n.id === previousId)
+        ?? createRogueliteMapLayer(previousStage)[0];
+      if (draft) {
+        vm.clearedNode = toRouteNodeVM(draft);
+      }
+    }
+  }
+
+  // Available nodes (current stage)
+  const layer = createRogueliteMapLayer(stage);
+  if (stage <= 1) {
+    vm.availableNodes = [toRouteNodeVM(layer[0] ?? { id: getRogueliteMapNodeId(1, 0), stage: 1, type: 'normal', branch: 0, x: 50 })];
+  } else {
+    const prevNodeId = run?.mapRoute?.[previousStage] ?? getRogueliteMapNodeId(previousStage, 0);
+    const prevNode = createRogueliteMapLayer(previousStage).find((n) => n.id === prevNodeId)
+      ?? createRogueliteMapLayer(previousStage)[0];
+    if (prevNode) {
+      const connectedIds = getRogueliteConnectedNodeIds(prevNode, layer);
+      vm.availableNodes = layer.filter((n) => connectedIds.has(n.id)).map(toRouteNodeVM);
+    } else {
+      vm.availableNodes = layer.slice(0, 2).map(toRouteNodeVM);
+    }
+  }
+
+  // Preview nodes (next stage)
+  vm.previewNodes = createRogueliteMapLayer(stage + 1).slice(0, 4).map(toRouteNodeVM);
+
+  return vm;
+}
+
+function toRouteNodeVM(draft: RogueliteMapNodeDraft): RouteNodeVM {
+  const config = ROGUELITE_ROOM_TYPES[draft.type as keyof typeof ROGUELITE_ROOM_TYPES];
+  return {
+    id: draft.id,
+    stage: draft.stage,
+    type: draft.type,
+    typeLabel: config?.label ?? draft.type,
+    icon: config?.icon ?? '?',
+    description: config?.description ?? `A ${draft.type} room.`,
+    enemyTemplateId: draft.enemyTemplateId,
+    bossTemplateId: draft.bossTemplateId,
+  };
 }

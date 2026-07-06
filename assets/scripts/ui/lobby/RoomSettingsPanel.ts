@@ -78,7 +78,7 @@ export class RoomSettingsPanel extends Component {
   }
 
   render(room: Room, localClientId: string, fixedMaxPlayers: number): void {
-    const mode = room.gameMode ?? room.settings.gameMode ?? 'classic';
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
     const isPvE = mode === 'pve_1v1' || mode === 'pve_roguelite';
     const isHost = room.players.some((player) => player.clientId === localClientId && player.isHost);
     // Mode switching: allowed for host in any non-PvE mode (so you can switch back from duo)

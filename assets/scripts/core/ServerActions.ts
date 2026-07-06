@@ -44,12 +44,12 @@ export class ServerActions {
     this.gameManager.emitAck('selectTarget', { targetId }, callback);
   }
 
-  selectActor(actorId: string): void {
-    this.gameManager.emitAck('selectActor', { actorId });
+  selectActor(actorId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('selectActor', { actorId }, callback);
   }
 
-  rollDice(): void {
-    this.gameManager.emitAck('rollDice', {});
+  rollDice(callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('rollDice', {}, callback);
   }
 
   confirmRollDecision(payload: {
@@ -93,16 +93,16 @@ export class ServerActions {
     this.gameManager.emitAck('kickPlayer', { playerId });
   }
 
-  rollGuardCheck(): void {
-    this.gameManager.emitAck('rollGuardCheck', {});
+  rollGuardCheck(callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('rollGuardCheck', {}, callback);
   }
 
   readyForRematch(): void {
     this.gameManager.emitAck('readyForRematch', {});
   }
 
-  sendEmote(emoteId: string): void {
-    this.gameManager.emitAck('sendEmote', { emoteId });
+  sendEmote(emoteId: string, callback?: (response: unknown) => void): void {
+    this.gameManager.emitAck('sendEmote', { emoteId }, callback);
   }
 
   chooseDuoSlotCharacter(slotIndex: 0 | 1, characterId: CharacterId): void {

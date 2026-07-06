@@ -124,7 +124,7 @@ export function buildSeatTags(
   summonerSkillName: string,
   enemyTypeLabel?: (p: Player) => string,
 ): string[] {
-  const isRoguelite = room.gameMode === 'pve_roguelite';
+  const isRoguelite = (room.gameMode ?? room.settings?.gameMode) === 'pve_roguelite';
   if (isRoguelite && player.isBot && player.rogueliteEnemyInfo) {
     const tags = [enemyTypeLabel ? enemyTypeLabel(player) : 'Enemy'];
     if (player.rogueliteEnemyInfo.skillNames?.[0])

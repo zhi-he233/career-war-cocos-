@@ -44,6 +44,10 @@ export class EmoteHelper {
     return Date.now() - this.lastSendTime >= this.cooldownMs;
   }
 
+  get remainingCooldownMs(): number {
+    return Math.max(0, this.cooldownMs - (Date.now() - this.lastSendTime));
+  }
+
   get active(): ActiveEmote[] {
     return this.activeEmotes;
   }
@@ -74,6 +78,10 @@ export class EmoteHelper {
   tick(): void {
     const now = Date.now();
     this.activeEmotes = this.activeEmotes.filter((item) => item.expiresAt > now);
+  }
+
+  resetCooldown(): void {
+    this.lastSendTime = 0;
   }
 
   reset(): void {
