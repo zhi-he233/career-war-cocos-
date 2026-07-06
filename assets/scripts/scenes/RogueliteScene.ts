@@ -100,6 +100,9 @@ export class RogueliteScene extends Component {
   @property({ type: Button })
   helpButton: Button | null = null;
 
+  @property({ type: Button })
+  exitButton: Button | null = null;
+
   private infoDialog: InfoDialog | null = null;
 
   private gameManager: GameManager | null = null;
@@ -121,6 +124,7 @@ export class RogueliteScene extends Component {
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.helpButton?.node.on(Button.EventType.CLICK, this.openRuleGuide, this);
+    this.exitButton?.node.on(Button.EventType.CLICK, this.onExitClick, this);
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
     if (room) this.render(room);
@@ -130,6 +134,7 @@ export class RogueliteScene extends Component {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.helpButton?.node.off(Button.EventType.CLICK, this.openRuleGuide, this);
+    this.exitButton?.node.off(Button.EventType.CLICK, this.onExitClick, this);
   }
 
   private render(room: Room): void {
@@ -711,6 +716,11 @@ export class RogueliteScene extends Component {
         { heading: 'Rarity', content: event.rarity.toUpperCase() },
       ],
     );
+  }
+
+  /** Leave the room and return to Home. */
+  private onExitClick(): void {
+    this.gameManager?.leaveRoom();
   }
 
   /** Open rule guide panel or fallback to InfoDialog. */

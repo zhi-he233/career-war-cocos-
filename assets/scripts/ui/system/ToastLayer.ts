@@ -33,7 +33,6 @@ export class ToastLayer extends Component {
     this.ensureMinimalUi();
     this.node.active = true;
     this.node.setSiblingIndex(999);
-    this.node.setPosition(new Vec3(0, -555, 0));
     if (this.messageLabel) this.messageLabel.string = message;
 
     const opacity = this.node.getComponent(UIOpacity) ?? this.node.addComponent(UIOpacity);

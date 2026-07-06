@@ -53,6 +53,9 @@ export class HomeScene extends Component {
   @property
   clientId = 'cocos-client';
 
+  @property
+  enableFallbackUi = false;
+
   @property({ type: Label })
   statusLabel: Label | null = null;
 
@@ -100,7 +103,7 @@ export class HomeScene extends Component {
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
   onLoad(): void {
-    this.ensureMinimalUi();
+    if (this.enableFallbackUi) this.ensureMinimalUi();
 
     this.clientId = this.getClientId();
     this.gameManager = GameManager.getInstance();

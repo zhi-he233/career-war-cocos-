@@ -51,6 +51,9 @@ export class LobbyScene extends Component {
   @property({ type: Button })
   startGameButton: Button | null = null;
 
+  @property({ type: Button })
+  backButton: Button | null = null;
+
   @property({ type: SpriteFrame })
   parchmentFrame: SpriteFrame | null = null;
 
@@ -116,6 +119,7 @@ export class LobbyScene extends Component {
     this.gameManager.onRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.startGameButton?.node.on(Button.EventType.CLICK, this.startGame, this);
+    this.backButton?.node.on(Button.EventType.CLICK, this.onBackClick, this);
 
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
@@ -126,6 +130,11 @@ export class LobbyScene extends Component {
     this.gameManager?.offRoomUpdated(this.handleRoomUpdatedBound, this);
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
     this.startGameButton?.node.off(Button.EventType.CLICK, this.startGame, this);
+    this.backButton?.node.off(Button.EventType.CLICK, this.onBackClick, this);
+  }
+
+  private onBackClick(): void {
+    this.gameManager?.leaveRoom();
   }
 
   chooseCharacter(characterId: CharacterId): void {

@@ -56,6 +56,9 @@ export class BattleScene extends Component {
   @property({ type: Button })
   helpButton: Button | null = null;
 
+  @property({ type: Button })
+  exitButton: Button | null = null;
+
   @property({ type: DicePanel })
   dicePanel: DicePanel | null = null;
 
@@ -163,6 +166,7 @@ export class BattleScene extends Component {
   private statusText = '';
   private pendingAction = false;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private exitTapTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
   private readonly handlePlayerEmoteReceivedBound = (event: PlayerEmoteEvent) => this.onEmoteReceived(event);
@@ -179,6 +183,7 @@ export class BattleScene extends Component {
     this.openDetailButton?.node.on(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
     this.enemyDetailButton?.node.on(Button.EventType.CLICK, this.openEnemyDetail, this);
     this.helpButton?.node.on(Button.EventType.CLICK, this.openRuleGuide, this);
+    this.exitButton?.node.on(Button.EventType.CLICK, this.onExitClick, this);
 
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
@@ -195,6 +200,7 @@ export class BattleScene extends Component {
     this.openDetailButton?.node.off(Button.EventType.CLICK, this.openLocalPlayerDetail, this);
     this.enemyDetailButton?.node.off(Button.EventType.CLICK, this.openEnemyDetail, this);
     this.helpButton?.node.off(Button.EventType.CLICK, this.openRuleGuide, this);
+    this.exitButton?.node.off(Button.EventType.CLICK, this.onExitClick, this);
   }
 
   private render(room: Room): void {
@@ -368,6 +374,24 @@ export class BattleScene extends Component {
   private clearPendingLock(): void {
     this.pendingAction = false;
     if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null; }
+  }
+
+  /** Exit button handler. Direct leave on gameOver; double-tap confirm mid-battle. */
+  private onExitClick(): void {
+    if (!this.room) return;
+    if (this.room.phase === 'gameOver') {
+      this.gameManager?.leaveRoom();
+      return;
+    }
+    // Mid-battle: require double-tap within 3s to prevent accidental exit
+    if (this.exitTapTimer) {
+      clearTimeout(this.exitTapTimer);
+      this.exitTapTimer = null;
+      this.gameManager?.leaveRoom();
+      return;
+    }
+    this.exitTapTimer = setTimeout(() => { this.exitTapTimer = null; }, 3000);
+    this.gameManager?.showToast('Tap again to confirm exit', 1.6);
   }
 
   private clearPendingOnAckFailure(response: unknown): boolean {
@@ -544,7 +568,7 @@ export class BattleScene extends Component {
   }
 
   private ensureMinimalUi(): void {
-    this.ensureSpriteNode('BattleParchmentPanel', 0, 80, 680, 930, this.parchmentFrame);
+    this.ensureSpriteNode('BattleParchmentPanel', 0, -30, 680, 1120, this.parchmentFrame);
     const enemySeatNode = this.ensurePrefabNode('EnemySeatPanel', this.battleSeatPrefab, 0, 335, 640, 145, this.node);
     const playerSeatNode = this.ensurePrefabNode('PlayerSeatPanel', this.battleSeatPrefab, 0, -170, 640, 145, this.node);
     this.ensureSpriteNode('DiceFrame', 0, 72, 126, 126, this.diceFaces[0] ?? null);
@@ -557,7 +581,7 @@ export class BattleScene extends Component {
     this.dicePanel ??= dicePanelNode.getComponent(DicePanel) ?? dicePanelNode.addComponent(DicePanel);
     this.dicePanel.diceFaces = this.diceFaces;
     this.diceLabel ??= this.ensureLabel('DiceLabel', 0, 70, 640, 54, 24, this.node);
-    this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -20, 210, 56, 24, this.node);
+    this.rollButton ??= this.createButton('RollButton', 'Roll', 0, -35, 210, 56, 24, this.node);
     this.actionListNode ??= this.ensurePrefabNode('ActionList', this.actionSlotsPrefab, 0, -105, 660, 130, this.node);
     this.actionSlots ??= this.actionListNode.getComponent(ActionSlots) ?? this.actionListNode.addComponent(ActionSlots);
     this.actionSlots.attackFrame = this.attackFrame ?? this.actionFrame;
@@ -565,18 +589,18 @@ export class BattleScene extends Component {
     this.actionSlots.summonerFrame = this.actionFrame ?? this.skillFrame;
     this.actionSlots.onConfirm = (actionType, selfDamageAmount) => this.handleActionConfirm(actionType, selfDamageAmount);
 
-    const selfPanelNode = this.ensurePrefabNode('SelfPanel', this.selfPanelPrefab, 0, -335, 620, 150, this.node);
+    const selfPanelNode = this.ensurePrefabNode('SelfPanel', this.selfPanelPrefab, 0, -315, 620, 140, this.node);
     this.selfPanel ??= selfPanelNode.getComponent(SelfPanel) ?? selfPanelNode.addComponent(SelfPanel);
     this.selfPanel.panelFrame = this.seatFrame ?? this.actionFrame;
 
-    const battleLogNode = this.ensurePrefabNode('BattleLog', this.battleLogPrefab, 0, -520, 650, 150, this.node);
+    const battleLogNode = this.ensurePrefabNode('BattleLog', this.battleLogPrefab, 0, -520, 650, 140, this.node);
     this.battleLog ??= battleLogNode.getComponent(BattleLog) ?? battleLogNode.addComponent(BattleLog);
     this.battleLog.maxLines = 6;
 
-    this.openDetailButton ??= this.createButton('OpenDetailButton', 'Detail', -190, -590, 100, 40, 16, this.node);
-    this.enemyDetailButton ??= this.createButton('EnemyDetailButton', 'Enemy', -45, -590, 100, 40, 16, this.node);
+    this.openDetailButton ??= this.createButton('OpenDetailButton', 'Detail', -84, -590, 100, 40, 16, this.node);
+    this.enemyDetailButton ??= this.createButton('EnemyDetailButton', 'Enemy', 32, -590, 100, 40, 16, this.node);
     this.enemyDetailButton.node.active = false;
-    this.openLogButton ??= this.createButton('OpenLogButton', 'Log', 105, -590, 100, 40, 16, this.node);
+    this.openLogButton ??= this.createButton('OpenLogButton', 'Log', 148, -590, 100, 40, 16, this.node);
 
     const detailNode = this.ensurePrefabNode('PlayerDetailDialog', this.playerDetailDialogPrefab, 0, 20, 620, 430, this.node);
     this.playerDetailDialog ??= detailNode.getComponent(PlayerDetailDialog) ?? detailNode.addComponent(PlayerDetailDialog);
@@ -597,7 +621,7 @@ export class BattleScene extends Component {
     this.rematchPanel.setHandlers(() => this.serverActions.readyForRematch());
     rematchNode.setSiblingIndex(997);
 
-    const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -555, 560, 56, this.node);
+    const toastNode = this.ensurePrefabNode('ToastLayer', this.toastLayerPrefab, 0, -535, 560, 48, this.node);
     this.toastLayer ??= toastNode.getComponent(ToastLayer) ?? toastNode.addComponent(ToastLayer);
     this.toastLayer.panelFrame = this.actionFrame ?? this.seatFrame;
 
@@ -607,7 +631,7 @@ export class BattleScene extends Component {
     this.rogueliteStatusCompact.buffIconPrefab = this.buffIconPrefab;
     compactNode.active = false;
 
-    const emoteNode = this.ensurePrefabNode('EmoteBar', this.emoteBarPrefab, 0, -410, 620, 56, this.node);
+    const emoteNode = this.ensurePrefabNode('EmoteBar', this.emoteBarPrefab, 0, -440, 620, 56, this.node);
     this.emoteBar ??= emoteNode.getComponent(EmoteBar) ?? emoteNode.addComponent(EmoteBar);
     this.emoteBar.buttonFrame = this.actionFrame;
     this.emoteBar.onSendEmote = (emoteId: EmoteId) => {
@@ -627,7 +651,7 @@ export class BattleScene extends Component {
     this.ruleGuidePanel.buttonFrame = this.actionFrame;
     guideNode.setSiblingIndex(998);
 
-    this.helpButton ??= this.createButton('HelpButton', '?', -295, -590, 44, 40, 20, this.node);
+    this.helpButton ??= this.createButton('HelpButton', '?', -176, -590, 44, 40, 20, this.node);
   }
 
   private ensureBattleSeat(node: Node, playerIndex: number): void {

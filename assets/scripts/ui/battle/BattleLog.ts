@@ -51,8 +51,10 @@ export class BattleLog extends Component {
     if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) {
       transform.setContentSize(680, 300);
     }
+    const pw = transform.contentSize.width || 680;
+    const ph = transform.contentSize.height || 300;
 
-    this.logLabel ??= this.ensureLabel('LogLabel', 0, 0, 660, 280, 16);
+    this.logLabel ??= this.ensureLabel('LogLabel', 0, 0, pw - 20, ph - 20, 16);
   }
 
   private ensureLabel(name: string, x: number, y: number, width: number, height: number, fontSize: number): Label {
