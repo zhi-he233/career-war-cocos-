@@ -19,7 +19,7 @@ const { ccclass, property } = _decorator;
 @ccclass('LobbyScene')
 export class LobbyScene extends Component {
   @property
-  lobbyTitle = 'Preparation Room';
+  lobbyTitle = '准备房间';
 
   @property
   modeHint = '';
@@ -28,7 +28,10 @@ export class LobbyScene extends Component {
   fixedMaxPlayers = 0;
 
   @property
-  startButtonText = 'Start Game';
+  startButtonText = '开始游戏';
+
+  @property
+  enableFallbackUi = false;
 
   @property({ type: Label })
   statusLabel: Label | null = null;
@@ -53,6 +56,9 @@ export class LobbyScene extends Component {
 
   @property({ type: Button })
   backButton: Button | null = null;
+
+  @property({ type: LobbyStartBar })
+  lobbyStartBar: LobbyStartBar | null = null;
 
   @property({ type: SpriteFrame })
   parchmentFrame: SpriteFrame | null = null;
@@ -102,7 +108,6 @@ export class LobbyScene extends Component {
   protected selectedCharacterId: CharacterId = 'boxer';
   protected selectedSummonerSkillId: SummonerSkillId = 'lucky_plus_one';
   private duoSlotPicker: DuoSlotPicker | null = null;
-  private lobbyStartBar: LobbyStartBar | null = null;
   private roomSettingsPanel: RoomSettingsPanel | null = null;
   private characterDetailDialog: CharacterDetailDialog | null = null;
   private summonerSkillDetailDialog: SummonerSkillDetailDialog | null = null;
@@ -123,7 +128,18 @@ export class LobbyScene extends Component {
 
     const room = this.gameManager.getRoom();
     this.statusText = this.gameManager.getStatus();
-    if (room) this.render(room);
+    if (room) {
+      this.render(room);
+    } else if (this.lobbyStartBar) {
+      // Flush LobbyStartBar so prefab default text doesn't linger
+      this.lobbyStartBar.render(null, this.gameManager?.localClientId ?? '', this.startButtonText);
+    }
+    // Fallback: if startGameButton not bound but lobbyStartBar provides one, wire it
+    if (!this.startGameButton && this.lobbyStartBar?.startButton) {
+      this.startGameButton = this.lobbyStartBar.startButton;
+      this.startGameButton.node.on(Button.EventType.CLICK, this.startGame, this);
+    }
+    if (!this.enableFallbackUi) this.warnMissingBindings();
   }
 
   onDestroy(): void {
@@ -177,6 +193,10 @@ export class LobbyScene extends Component {
   }
 
   startGame(): void {
+    if (!this.room) {
+      this.gameManager?.showToast('房间尚未就绪', 1.5);
+      return;
+    }
     const me = this.getMe();
     if (!me?.characterId) {
       this.chooseCharacter(this.selectedCharacterId);
@@ -385,7 +405,7 @@ export class LobbyScene extends Component {
   }
 
   private renderLobbyStartBar(room: Room): void {
-    if (!this.lobbyStartBarPrefab || !this.lobbyStartBar) return;
+    if (!this.lobbyStartBar) return;
     this.lobbyStartBar.render(room, this.gameManager?.localClientId ?? '', this.startButtonText);
   }
 
@@ -481,23 +501,55 @@ export class LobbyScene extends Component {
     this.serverActions.updateRoomSettings({ maxPlayers: this.fixedMaxPlayers });
   }
 
+  /** One-time warning for missing @property bindings when fallback UI is off. */
+  private warnMissingBindings(): void {
+    const missing: string[] = [];
+    if (!this.characterListNode) missing.push('characterListNode');
+    if (!this.skillListNode) missing.push('skillListNode');
+    if (!this.playerListNode && !this.playerListItemPrefab) missing.push('playerListNode / playerListItemPrefab');
+    if (!this.startGameButton && !this.lobbyStartBar?.startButton) missing.push('startGameButton / lobbyStartBar');
+    if (missing.length > 0) {
+      console.warn(`[LobbyScene] Missing @property bindings (no fallback UI): ${missing.join(', ')}. Bind them in the editor or set enableFallbackUi=true.`);
+    }
+  }
+
+  /** Fallback layout constants — only used when enableFallbackUi=true. */
+  private readonly FALLBACK = {
+    STATUS:         { x: 0, y: 545, w: 680, h: 64, fs: 20 },
+    PLAYER_LIST:    { x: 0, y: 430, w: 620, h: 112 },
+    PLAYER_LIST_LABEL_FS: 17,
+    SELECTION:      { x: 0, y: 320, w: 680, h: 42, fs: 20 },
+    CHARACTER_LIST: { x: 0, y: 220, w: 660, h: 340 },
+    SKILL_LIST:     { x: 0, y: -245, w: 640, h: 60 },
+    START:          { x: 0, y: -390, w: 260, h: 64, fs: 26 },
+  };
+
   private ensureMinimalUi(): void {
+    // Decorative sprites — invisible without frames, safe to always create
     this.ensureSpriteNode('LobbyParchmentPanel', 0, 145, 670, 600, this.parchmentFrame);
     this.ensureSpriteNode('PlayerSeatPanel', 0, 430, 640, 120, this.seatFrame ?? this.statusFrame);
     this.ensureSpriteNode('SkillPanel', 0, -245, 640, 92, this.statusFrame);
 
-    this.statusLabel ??= this.ensureLabel('StatusLabel', 0, 545, 680, 64, 20);
-    this.playerListNode ??= this.ensureNode('PlayerList', 0, 430, 620, 112);
-    this.playerListLabel ??= this.playerListItemPrefab ? null : this.ensureLabel('PlayerListLabel', 0, 430, 620, 112, 17);
-    this.selectionLabel ??= this.ensureLabel('SelectionLabel', 0, 320, 680, 42, 20);
-    this.characterListNode ??= this.ensureNode('CharacterList', 0, 220, 660, 340);
-    this.skillListNode ??= this.ensureNode('SkillList', 0, -245, 640, 60);
-    if (this.lobbyStartBarPrefab) {
+    // LobbyStartBar — prefer manual @property binding, fallback to prefab instantiation
+    if (!this.lobbyStartBar && this.lobbyStartBarPrefab) {
       const startBarNode = this.instantiatePrefab(this.lobbyStartBarPrefab, 'LobbyStartBar', 0, -405, 640, 82, this.node);
       this.lobbyStartBar = startBarNode.getComponent(LobbyStartBar) ?? startBarNode.addComponent(LobbyStartBar);
+    }
+    if (this.lobbyStartBar) {
       this.startGameButton ??= this.lobbyStartBar.startButton;
     }
-    this.startGameButton ??= this.createButton('StartGameButton', this.startButtonText, 0, -390, 260, 64, 26, this.node);
+
+    // Fallback labels/buttons — only when enableFallbackUi is true
+    if (!this.enableFallbackUi) return;
+
+    const L = this.FALLBACK;
+    this.statusLabel ??= this.ensureLabel('StatusLabel', L.STATUS.x, L.STATUS.y, L.STATUS.w, L.STATUS.h, L.STATUS.fs);
+    this.playerListNode ??= this.ensureNode('PlayerList', L.PLAYER_LIST.x, L.PLAYER_LIST.y, L.PLAYER_LIST.w, L.PLAYER_LIST.h);
+    this.playerListLabel ??= this.playerListItemPrefab ? null : this.ensureLabel('PlayerListLabel', L.PLAYER_LIST.x, L.PLAYER_LIST.y, L.PLAYER_LIST.w, L.PLAYER_LIST.h, L.PLAYER_LIST_LABEL_FS);
+    this.selectionLabel ??= this.ensureLabel('SelectionLabel', L.SELECTION.x, L.SELECTION.y, L.SELECTION.w, L.SELECTION.h, L.SELECTION.fs);
+    this.characterListNode ??= this.ensureNode('CharacterList', L.CHARACTER_LIST.x, L.CHARACTER_LIST.y, L.CHARACTER_LIST.w, L.CHARACTER_LIST.h);
+    this.skillListNode ??= this.ensureNode('SkillList', L.SKILL_LIST.x, L.SKILL_LIST.y, L.SKILL_LIST.w, L.SKILL_LIST.h);
+    this.startGameButton ??= this.createButton('StartGameButton', this.startButtonText, L.START.x, L.START.y, L.START.w, L.START.h, L.START.fs, this.node);
     this.setButtonLabel(this.startGameButton, this.startButtonText);
   }
 

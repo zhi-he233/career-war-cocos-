@@ -9,8 +9,8 @@ const { ccclass } = _decorator;
 @ccclass('DuoLobbyScene')
 export class DuoLobbyScene extends LobbyScene {
   onLoad(): void {
-    this.lobbyTitle = 'Classic 2V2 Lobby';
-    this.modeHint = 'Rough pass: this page auto-fills two slots for now.';
+    this.lobbyTitle = '2V2 双角色';
+    this.modeHint = '双角色模式：自动填充两个角色槽位。';
     this.fixedMaxPlayers = 2;
     super.onLoad();
   }

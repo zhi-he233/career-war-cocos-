@@ -114,6 +114,7 @@ export class HomeScene extends Component {
     this.joinRoomButton?.node.on(Button.EventType.CLICK, this.joinRoom, this);
     this.refreshRoomsButton?.node.on(Button.EventType.CLICK, this.requestRoomList, this);
     this.renderStatus(this.gameManager.getStatus());
+    if (!this.enableFallbackUi) this.warnMissingBindings();
     this.renderRoomList();
     this.tryAutoResume();
   }
@@ -146,7 +147,7 @@ export class HomeScene extends Component {
       this.ruleGuidePanel.open();
       return;
     }
-    this.showInfoPanel('Rule Guide', ruleGuidePlainText());
+    this.showInfoPanel('规则说明', ruleGuidePlainText());
   }
 
   openProfile(): void {
@@ -419,12 +420,33 @@ export class HomeScene extends Component {
     }, 1.2);
   }
 
+  /** One-time warning for missing @property bindings when fallback UI is off. */
+  private warnMissingBindings(): void {
+    const missing: string[] = [];
+    if (!this.roomIdEditBox) missing.push('roomIdEditBox');
+    if (!this.joinRoomButton) missing.push('joinRoomButton');
+    if (!this.refreshRoomsButton) missing.push('refreshRoomsButton');
+    if (!this.roomListNode) missing.push('roomListNode');
+    if (missing.length > 0) {
+      console.warn(`[HomeScene] Missing @property bindings (no fallback UI): ${missing.join(', ')}. Bind them in the editor or set enableFallbackUi=true.`);
+    }
+  }
+
+  /** Fallback layout constants — only used when enableFallbackUi=true. */
+  private readonly FALLBACK = {
+    ROOM_ID:    { x: -120, y: -315, w: 260, h: 48 },
+    JOIN:       { x: 180, y: -315, w: 180, h: 48, fs: 20 },
+    REFRESH:    { x: 0, y: -375, w: 260, h: 44, fs: 18 },
+    ROOM_LIST:  { x: 0, y: -490, w: 640, h: 150 },
+    STATUS:     { x: 0, y: -585, w: 640, h: 80, fs: 18 },
+  };
+
   private ensureMinimalUi(): void {
-    this.roomIdEditBox ??= this.ensureEditBox('RoomIdEditBox', -120, -315, 260, 48);
-    this.joinRoomButton ??= this.ensureButton('JoinRoomButton', 'Join Room', 180, -315, 180, 48, 20);
-    this.refreshRoomsButton ??= this.ensureButton('RefreshRoomsButton', 'Refresh Rooms', 0, -375, 260, 44, 18);
-    this.roomListNode ??= this.ensureNode('RoomList', 0, -490, 640, 150);
-    this.statusLabel ??= this.ensureLabel('StatusLabel', 0, -585, 640, 80, 18);
+    this.roomIdEditBox ??= this.ensureEditBox('RoomIdEditBox', this.FALLBACK.ROOM_ID.x, this.FALLBACK.ROOM_ID.y, this.FALLBACK.ROOM_ID.w, this.FALLBACK.ROOM_ID.h);
+    this.joinRoomButton ??= this.ensureButton('JoinRoomButton', '加入房间', this.FALLBACK.JOIN.x, this.FALLBACK.JOIN.y, this.FALLBACK.JOIN.w, this.FALLBACK.JOIN.h, this.FALLBACK.JOIN.fs);
+    this.refreshRoomsButton ??= this.ensureButton('RefreshRoomsButton', '刷新房间', this.FALLBACK.REFRESH.x, this.FALLBACK.REFRESH.y, this.FALLBACK.REFRESH.w, this.FALLBACK.REFRESH.h, this.FALLBACK.REFRESH.fs);
+    this.roomListNode ??= this.ensureNode('RoomList', this.FALLBACK.ROOM_LIST.x, this.FALLBACK.ROOM_LIST.y, this.FALLBACK.ROOM_LIST.w, this.FALLBACK.ROOM_LIST.h);
+    this.statusLabel ??= this.ensureLabel('StatusLabel', this.FALLBACK.STATUS.x, this.FALLBACK.STATUS.y, this.FALLBACK.STATUS.w, this.FALLBACK.STATUS.h, this.FALLBACK.STATUS.fs);
   }
 
   private ensureOverlayPrefabs(): void {
@@ -458,7 +480,7 @@ export class HomeScene extends Component {
 
     if (this.roomList.length === 0) {
       const label = this.ensureLabelInParent('RoomListEmpty', 0, 30, 620, 44, 16, this.roomListNode);
-      label.string = 'No rooms loaded. Tap Refresh Rooms.';
+      label.string = '暂无房间，点击刷新房间';
       return;
     }
 
@@ -483,12 +505,12 @@ export class HomeScene extends Component {
 
     const editBox = node.getComponent(EditBox) ?? node.addComponent(EditBox);
     editBox.string = sys.localStorage.getItem(LAST_ROOM_ID_KEY) ?? '';
-    editBox.placeholder = 'Room ID';
+    editBox.placeholder = '房间号';
     editBox.maxLength = 16;
 
     const textLabel = this.ensureChildLabel(node, 'TextLabel', width, height, 20);
     const placeholderLabel = this.ensureChildLabel(node, 'PlaceholderLabel', width, height, 20);
-    placeholderLabel.string = 'Room ID';
+    placeholderLabel.string = '房间号';
     editBox.textLabel = textLabel;
     editBox.placeholderLabel = placeholderLabel;
     return editBox;

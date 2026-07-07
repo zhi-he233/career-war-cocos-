@@ -23,6 +23,15 @@ const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
 type ClassicLobbySceneName = 'Classic1v1Lobby' | 'DuoLobby';
 
+/** Fallback layout constants — only used when enableFallbackUi=true. */
+const LAYOUT = {
+  PARCHMENT:   { x: 0, y: 40, w: 660, h: 760 },
+  STATUS:      { x: 0, y: 480, w: 620, h: 64, fs: 22 },
+  CARD_1V1:    { x: 0, y: 160, w: 560, h: 190 },
+  CARD_2V2:    { x: 0, y: -60, w: 560, h: 190 },
+  BACK:        { x: 0, y: -300, w: 280, h: 64, fs: 22 },
+} as const;
+
 @ccclass('ClassicModeScene')
 export class ClassicModeScene extends Component {
   @property
@@ -33,6 +42,9 @@ export class ClassicModeScene extends Component {
 
   @property
   fallbackSceneDelay = 0.8;
+
+  @property
+  enableFallbackUi = false;
 
   @property({ type: Label })
   statusLabel: Label | null = null;
@@ -60,7 +72,7 @@ export class ClassicModeScene extends Component {
   private clientId = '';
 
   onLoad(): void {
-    this.ensureMinimalUi();
+    if (this.enableFallbackUi) this.ensureMinimalUi();
     this.clientId = this.getClientId();
     this.gameManager = GameManager.getInstance();
     this.serverActions = new ServerActions(this.gameManager);
@@ -68,7 +80,9 @@ export class ClassicModeScene extends Component {
     this.classic1v1Button?.node.on(Button.EventType.CLICK, this.createClassic1v1Room, this);
     this.duo2v2Button?.node.on(Button.EventType.CLICK, this.createDuo2v2Room, this);
     this.backButton?.node.on(Button.EventType.CLICK, this.backHome, this);
-    this.setStatus('Choose classic battle size');
+    this.setStatus('选择对战模式');
+
+    if (!this.enableFallbackUi) this.warnMissingBindings();
   }
 
   onDestroy(): void {
@@ -91,7 +105,7 @@ export class ClassicModeScene extends Component {
 
   private createRoom(gameMode: GameMode, fallbackScene: ClassicLobbySceneName, settings?: Partial<RoomSettings>): void {
     let receivedAck = false;
-    this.setStatus('Creating room...');
+    this.setStatus('正在创建房间...');
     this.gameManager?.setLocalPlayer(this.clientId, this.nickname);
     this.gameManager?.connect(this.serverUrl);
     this.serverActions.createRoom(
@@ -99,7 +113,7 @@ export class ClassicModeScene extends Component {
       (response: Ack<{ room: Room }>) => {
         receivedAck = true;
         if (!response?.ok || !response.room) {
-          this.setStatus('Server not ready, opening preview scene');
+          this.setStatus('服务器未就绪，进入预览界面');
           director.loadScene(fallbackScene);
           return;
         }
@@ -114,17 +128,27 @@ export class ClassicModeScene extends Component {
 
     this.scheduleOnce(() => {
       if (receivedAck || director.getScene()?.name !== 'ClassicMode') return;
-      this.setStatus('Connecting, opening preview scene');
+      this.setStatus('正在连接，进入预览界面');
       director.loadScene(fallbackScene);
     }, this.fallbackSceneDelay);
   }
 
+  private warnMissingBindings(): void {
+    const missing: string[] = [];
+    if (!this.classic1v1Button) missing.push('classic1v1Button');
+    if (!this.duo2v2Button) missing.push('duo2v2Button');
+    if (!this.backButton) missing.push('backButton');
+    if (missing.length > 0) {
+      console.warn(`[ClassicModeScene] Missing @property bindings (no fallback UI): ${missing.join(', ')}. Bind them in the editor or set enableFallbackUi=true.`);
+    }
+  }
+
   private ensureMinimalUi(): void {
-    this.ensureSpriteNode('ClassicModeParchmentPanel', 0, 120, 660, 620, this.parchmentFrame);
-    this.statusLabel ??= this.ensureLabel('StatusLabel', 0, 460, 620, 88, 24);
-    this.classic1v1Button ??= this.createButton('Classic1v1Button', '1V1 Battle', -155, 160, 260, 300, 28);
-    this.duo2v2Button ??= this.createButton('Duo2v2Button', '2V2 Battle', 155, 160, 260, 300, 28);
-    this.backButton ??= this.createButton('BackButton', 'Back', 0, -340, 220, 58, 24);
+    this.ensureSpriteNode('ClassicModeParchmentPanel', LAYOUT.PARCHMENT.x, LAYOUT.PARCHMENT.y, LAYOUT.PARCHMENT.w, LAYOUT.PARCHMENT.h, this.parchmentFrame);
+    this.statusLabel ??= this.ensureLabel('StatusLabel', LAYOUT.STATUS.x, LAYOUT.STATUS.y, LAYOUT.STATUS.w, LAYOUT.STATUS.h, LAYOUT.STATUS.fs);
+    this.classic1v1Button ??= this.createButton('Classic1v1Button', '1V1 经典对战', LAYOUT.CARD_1V1.x, LAYOUT.CARD_1V1.y, LAYOUT.CARD_1V1.w, LAYOUT.CARD_1V1.h, 24);
+    this.duo2v2Button ??= this.createButton('Duo2v2Button', '2V2 双角色对战', LAYOUT.CARD_2V2.x, LAYOUT.CARD_2V2.y, LAYOUT.CARD_2V2.w, LAYOUT.CARD_2V2.h, 24);
+    this.backButton ??= this.createButton('BackButton', '返回主页', LAYOUT.BACK.x, LAYOUT.BACK.y, LAYOUT.BACK.w, LAYOUT.BACK.h, LAYOUT.BACK.fs);
   }
 
   private ensureNode(name: string, x: number, y: number, width: number, height: number): Node {
@@ -199,7 +223,7 @@ export class ClassicModeScene extends Component {
 
   private setStatus(status: string): void {
     if (this.statusLabel) {
-      this.statusLabel.string = `Classic Battle\n${status}`;
+      this.statusLabel.string = `对战模式选择\n${status}`;
     }
     this.gameManager?.setStatus(status);
   }

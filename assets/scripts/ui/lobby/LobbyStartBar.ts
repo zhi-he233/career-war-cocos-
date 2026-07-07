@@ -28,16 +28,16 @@ export class LobbyStartBar extends Component {
   render(room: Room | null, localClientId: string, buttonText: string): void {
     const me = room?.players.find((player) => player.clientId === localClientId || player.controllerId === localClientId) ?? null;
     const missing: string[] = [];
-    if (!me?.characterId) missing.push('character');
-    if (!me?.summonerSkillId) missing.push('summoner skill');
+    if (!me?.characterId) missing.push('角色');
+    if (!me?.summonerSkillId) missing.push('召唤师技能');
 
     if (this.hintLabel) {
       if (!room) {
-        this.hintLabel.string = 'No room state yet.';
+        this.hintLabel.string = '房间加载中';
       } else if (missing.length > 0) {
-        this.hintLabel.string = `Select ${missing.join(' and ')}. Current: ${characterName(me?.characterId)} / ${summonerSkillName(me?.summonerSkillId)}`;
+        this.hintLabel.string = `请选择 ${missing.join(' 和 ')}。当前：${characterName(me?.characterId)} / ${summonerSkillName(me?.summonerSkillId)}`;
       } else {
-        this.hintLabel.string = `Ready: ${characterName(me.characterId)} / ${summonerSkillName(me.summonerSkillId)}`;
+        this.hintLabel.string = `已就绪：${characterName(me.characterId)} / ${summonerSkillName(me.summonerSkillId)}`;
       }
     }
     if (this.startLabel) this.startLabel.string = buttonText;
