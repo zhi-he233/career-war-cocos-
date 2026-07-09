@@ -36,7 +36,13 @@ export type UiFrameKey =
   | 'bgDesk'        // 空白桌面
   | 'bgCard'         // 卡片底图
   | 'decCandle'      // 蜡烛
-  | 'decDice';       // 骰子
+  | 'decDice'        // 骰子
+  | 'homeClassicCard'
+  | 'homePveCard'
+  | 'homeProfileCard'
+  | 'homeRuleBook'
+  | 'decMug'
+  | 'decCoinPouch';
 
 // Runtime-loaded skins must stay under assets/resources because resources.load()
 // cannot load files from assets/art/ui directly. assets/art/ui is only a source
@@ -79,6 +85,12 @@ const FRAME_PATHS: Record<UiFrameKey, string> = {
   bgCard: 'art/主页/卡片/spriteFrame',
   decCandle: 'art/主页/蜡烛/spriteFrame',
   decDice: 'art/主页/骰子/spriteFrame',
+  homeClassicCard: 'art/主页/经典对战卡片/spriteFrame',
+  homePveCard: 'art/主页/人机训练卡片/spriteFrame',
+  homeProfileCard: 'art/主页/玩家档案卡片/spriteFrame',
+  homeRuleBook: 'art/主页/规则书/spriteFrame',
+  decMug: 'art/主页/杯子/spriteFrame',
+  decCoinPouch: 'art/主页/钱袋子/spriteFrame',
 };
 
 const cache = new Map<UiFrameKey, SpriteFrame | null>();

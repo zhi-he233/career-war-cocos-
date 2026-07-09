@@ -93,13 +93,13 @@
           ],
           "nuv": [
             0,
-            1,
-            1,
+            0,
             1,
             0,
             0,
             1,
-            0
+            1,
+            1
           ],
           "minPos": [
             -570.5,
@@ -128,7 +128,7 @@
   "userData": {
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
-    "hasAlpha": true,
+    "hasAlpha": false,
     "redirect": "7a3eab5e-7017-43db-8b39-39f16fbfb475@6c48a"
   }
 }

@@ -32,6 +32,7 @@ import {
   resources,
 } from 'cc';
 import { applyUiFrame, applyButtonFrame, type UiFrameKey } from '../core/UiSkin';
+export type { UiFrameKey } from '../core/UiSkin';
 
 // ── Design Resolution ──
 

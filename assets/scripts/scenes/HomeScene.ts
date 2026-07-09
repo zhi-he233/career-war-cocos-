@@ -23,8 +23,8 @@ import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
 import { ToastLayer } from '../ui/system/ToastLayer';
 import { MobileSceneBase } from '../ui/MobileSceneBase';
 import { MobileUIFactory as F, COLORS, FONTS, LAYOUT, DESIGN_W, DESIGN_H } from '../ui/MobileUIFactory';
+import type { UiFrameKey } from '../ui/MobileUIFactory';
 import { createMockRoomList, type MockRoomListItem } from '../mock/MockData';
-import type { UiFrameKey } from '../core/UiSkin';
 
 const { ccclass, property } = _decorator;
 const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
@@ -82,20 +82,36 @@ export class HomeScene extends MobileSceneBase {
   // Layout Constants (720×1280 design space)
   // ═══════════════════════════════════════════════════════════
   private readonly L = {
-    TITLE_Y:          480,
-    TITLE_PANEL_W:    560,
-    TITLE_PANEL_H:    140,
-    SUBTITLE_Y:       430,
-    BUTTON_START_Y:   280,
-    BUTTON_JOIN_Y:    160,
-    BUTTON_SETTINGS_Y: 40,
-    BUTTON_W:         400,
-    BUTTON_H:         72,
-    DECO_LEFT_X:      -180,
-    DECO_RIGHT_X:     180,
-    DECO_CANDLE_Y:    300,
-    DECO_DICE_Y:      200,
-    DECO_MUG_Y:       100,
+    CLASSIC_X:        -205,
+    CLASSIC_Y:        260,
+    CLASSIC_W:        190,
+    CLASSIC_H:        250,
+    PROFILE_X:        190,
+    PROFILE_Y:        270,
+    PROFILE_W:        180,
+    PROFILE_H:        240,
+    PVE_X:            -190,
+    PVE_Y:            -265,
+    PVE_W:            140,
+    PVE_H:            190,
+    DICE_X:           0,
+    DICE_Y:           -25,
+    DICE_SIZE:        170,
+    RULE_BOOK_X:      205,
+    RULE_BOOK_Y:      -300,
+    RULE_BOOK_W:      130,
+    RULE_BOOK_H:      105,
+    CANDLE_X:         -190,
+    CANDLE_Y:         330,
+    CANDLE_SIZE:      58,
+    MUG_X:            -190,
+    MUG_Y:            -510,
+    MUG_W:            82,
+    MUG_H:            70,
+    COIN_X:           165,
+    COIN_Y:           -505,
+    COIN_W:           88,
+    COIN_H:           80,
     STATUS_Y:         -520,
     STATUS_W:         620,
     STATUS_H:         60,
@@ -130,71 +146,97 @@ export class HomeScene extends MobileSceneBase {
   // ═══════════════════════════════════════════════════════════
 
   ensureMinimalUi(): void {
+    if (this.bindSceneHomeLayout()) return;
+
     this.createBackground();
-    this.createTitlePanel();
-    this.createDecorations();
-    this.createMainButtons();
-    this.createStatusArea();
+    this.createTabletopEntries();
+  }
+
+  private bindSceneHomeLayout(): boolean {
+    const table = this.node.getChildByName('TableBackground');
+    if (!table) return false;
+
+    this.bindSceneEntry('ClassicButton', () => this.loadScene('ClassicMode'));
+    this.bindSceneEntry('PveButton', () => this.createPveRoom());
+    this.bindSceneEntry('ProfileButton', () => director.loadScene('Profile'));
+    this.bindSceneEntry('RogueliteButton', () => this.createRogueliteRoom());
+    this.bindSceneEntry('DiceProp', () => this.createRogueliteRoom());
+    this.bindSceneEntry('RuleBookButton', () => this.openRuleGuide());
+    this.bindSceneEntry('CoinPouchProp', () => this.toggleJoinPanel());
+    this.bindSceneEntry('CandleProp', (node) => this.playPropTap(node, '烛火晃了一下。'));
+    this.bindSceneEntry('MugProp', (node) => this.playPropTap(node, '杯子被轻轻碰了一下。'));
+    return true;
+  }
+
+  private bindSceneEntry(name: string, handler: (node: Node) => void): void {
+    const node = this.node.getChildByName(name);
+    if (!node) return;
+    node.off(Node.EventType.TOUCH_END);
+
+    const button = node.getComponent(Button);
+    if (button) {
+      button.interactable = true;
+      button.clickEvents.length = 0;
+      button.node.off(Button.EventType.CLICK);
+      button.node.on(Button.EventType.CLICK, () => handler(node));
+    } else {
+      node.on(Node.EventType.TOUCH_END, () => handler(node));
+    }
   }
 
   private createBackground(): void {
     F.makeSkinnedBackground(this.node, 'bgDesk');
   }
 
-  private createTitlePanel(): void {
-    const { TITLE_Y, TITLE_PANEL_W, TITLE_PANEL_H } = this.L;
-    const result = F.makeSkinnedPanel(this.node, 0, TITLE_Y,
-      TITLE_PANEL_W, TITLE_PANEL_H, undefined, 'panelParchment');
+  private createTabletopEntries(): void {
+    this.createTabletopItem('ClassicCard', 'homeClassicCard',
+      this.L.CLASSIC_X, this.L.CLASSIC_Y, this.L.CLASSIC_W, this.L.CLASSIC_H, -14,
+      () => this.loadScene('ClassicMode'));
 
-    F.makeLabel('MainTitle', result.bg, 0, 20, TITLE_PANEL_W - 40, 52,
-      FONTS.TITLE + 8, '职业互怼', COLORS.GOLD_TEXT)
-      .horizontalAlign = Label.HorizontalAlign.CENTER;
+    this.createTabletopItem('ProfileCard', 'homeProfileCard',
+      this.L.PROFILE_X, this.L.PROFILE_Y, this.L.PROFILE_W, this.L.PROFILE_H, 12,
+      () => director.loadScene('Profile'));
 
-    F.makeLabel('Subtitle', result.bg, 0, -30, TITLE_PANEL_W - 60, 32,
-      FONTS.SMALL, '— 选择你的职业，投出命运之骰 —', COLORS.FANTASY_GOLD)
-      .horizontalAlign = Label.HorizontalAlign.CENTER;
+    this.createTabletopItem('PveCard', 'homePveCard',
+      this.L.PVE_X, this.L.PVE_Y, this.L.PVE_W, this.L.PVE_H, -8,
+      () => this.createPveRoom());
+
+    this.createTabletopItem('DiceProp', 'decDice',
+      this.L.DICE_X, this.L.DICE_Y, this.L.DICE_SIZE, this.L.DICE_SIZE, 0,
+      () => this.createRogueliteRoom());
+
+    this.createTabletopItem('RuleBookProp', 'homeRuleBook',
+      this.L.RULE_BOOK_X, this.L.RULE_BOOK_Y, this.L.RULE_BOOK_W, this.L.RULE_BOOK_H, -18,
+      () => this.openRuleGuide());
+
+    this.createTabletopItem('CandleProp', 'decCandle',
+      this.L.CANDLE_X, this.L.CANDLE_Y, this.L.CANDLE_SIZE, this.L.CANDLE_SIZE, 0,
+      (node) => this.playPropTap(node, '烛火晃了一下。'));
+
+    this.createTabletopItem('MugProp', 'decMug',
+      this.L.MUG_X, this.L.MUG_Y, this.L.MUG_W, this.L.MUG_H, 0,
+      (node) => this.playPropTap(node, '杯子被轻轻碰了一下。'));
+
+    this.createTabletopItem('CoinPouchProp', 'decCoinPouch',
+      this.L.COIN_X, this.L.COIN_Y, this.L.COIN_W, this.L.COIN_H, 0,
+      () => this.toggleJoinPanel());
   }
 
-  private createDecorations(): void {
-    // Use real candle & dice images where available, fallback to emoji labels
-    const decorConfig: Array<{name: string; y: number; x: number; key: UiFrameKey | null; emoji: string; msg: string; w: number; h: number}> = [
-      { name: 'CandleProp', y: this.L.DECO_CANDLE_Y, x: this.L.DECO_LEFT_X,  key: 'decCandle', emoji: '🕯️', msg: '烛火晃了一下。', w: 64, h: 64 },
-      { name: 'DiceProp',   y: this.L.DECO_DICE_Y,   x: this.L.DECO_RIGHT_X, key: 'decDice',   emoji: '🎲', msg: '骰子滚了一下。', w: 64, h: 64 },
-      { name: 'MugProp',    y: this.L.DECO_MUG_Y,    x: this.L.DECO_LEFT_X,  key: null,        emoji: '🍺', msg: '杯子被轻轻碰了一下。', w: 48, h: 48 },
-    ];
-
-    decorConfig.forEach((d) => {
-      let node: Node;
-      if (d.key) {
-        node = F.makeSkinnedSprite(d.name, this.node, d.x, d.y, d.w, d.h, d.key, d.emoji);
-      } else {
-        node = F.makeNode(d.name, this.node, d.x, d.y, d.w, d.h);
-        const label = node.addComponent(Label);
-        label.string = d.emoji;
-        label.fontSize = 28;
-        label.color = COLORS.FANTASY_GOLD;
-      }
-      node.on(Node.EventType.TOUCH_END, () => this.playPropTap(node, d.msg));
-    });
-  }
-
-  private createMainButtons(): void {
-    const { BUTTON_START_Y, BUTTON_JOIN_Y, BUTTON_SETTINGS_Y, BUTTON_W, BUTTON_H } = this.L;
-
-    const startBtn = F.makeSkinnedButton('StartGameBtn', '开始游戏', this.node,
-      0, BUTTON_START_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON + 2, 'buttonPrimary', 'primary');
-    F.addButtonFeedback(startBtn.button);
-    startBtn.button.node.on(Button.EventType.CLICK, () => this.loadScene('ClassicMode'));
-
-    const joinBtn = F.makeSkinnedButton('JoinRoomBtn', '加入房间', this.node,
-      0, BUTTON_JOIN_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON, 'buttonNormal', 'normal');
-    F.addButtonFeedback(joinBtn.button);
-    joinBtn.button.node.on(Button.EventType.CLICK, () => this.toggleJoinPanel());
-
-    const settingsBtn = F.makeSkinnedButton('SettingsBtn', '玩家档案', this.node,
-      0, BUTTON_SETTINGS_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON, 'buttonNormal', 'normal');
-    F.addButtonFeedback(settingsBtn.button);
-    settingsBtn.button.node.on(Button.EventType.CLICK, () => director.loadScene('Profile'));
+  private createTabletopItem(
+    name: string,
+    key: UiFrameKey,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    rotation: number,
+    onTap: (node: Node) => void,
+    fallbackLabel?: string,
+  ): Node {
+    const node = F.makeSkinnedSprite(name, this.node, x, y, w, h, key, fallbackLabel);
+    node.setRotationFromEuler(0, 0, rotation);
+    node.on(Node.EventType.TOUCH_END, () => onTap(node));
+    return node;
   }
 
   private createStatusArea(): void {
@@ -385,6 +427,32 @@ export class HomeScene extends MobileSceneBase {
     }
   }
 
+  private showInfoPanel(title: string, body: string): void {
+    this.infoPanelNode?.destroy();
+
+    const panelResult = F.makeSkinnedPanel(this.node, 0, 0, 600, 500, undefined, 'panelParchment');
+    const panel = panelResult.bg;
+    this.infoPanelNode = panel;
+    panel.setSiblingIndex(1000);
+
+    const titleLabel = F.makeLabel('InfoTitle', panel, 0, 180, 520, 44,
+      FONTS.HEADER, title, COLORS.TEXT_DARK);
+    titleLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+
+    const bodyLabel = F.makeLabel('InfoBody', panel, 0, 25, 500, 270,
+      FONTS.BODY, body, COLORS.TEXT_WOOD);
+    bodyLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    bodyLabel.verticalAlign = Label.VerticalAlign.TOP;
+
+    const closeBtn = F.makeSkinnedButton('InfoCloseBtn', '关闭', panel,
+      0, -185, 220, 56, FONTS.BUTTON, 'buttonNormal', 'normal');
+    F.addButtonFeedback(closeBtn.button);
+    closeBtn.button.node.on(Button.EventType.CLICK, () => {
+      this.infoPanelNode?.destroy();
+      this.infoPanelNode = null;
+    });
+  }
+
   private showToast(message: string): void {
     if (this.toastLayer) {
       this.toastLayer.show(message, 1.2);
@@ -465,7 +533,18 @@ export class HomeScene extends MobileSceneBase {
   // Public API (called from external buttons or editor bindings)
   createClassicRoom(): void { this.loadScene('ClassicMode'); }
   openProfile(): void { director.loadScene('Profile'); }
-  openRuleGuide(): void { this.ruleGuidePanel?.open(); }
+  openRuleGuide(): void {
+    if (this.ruleGuidePanel) {
+      this.ruleGuidePanel.open();
+      return;
+    }
+    this.showInfoPanel('规则书', [
+      '选择经典对战卡进入 1V1 / 2V2 模式选择。',
+      '选择人机练习卡进入单人训练。',
+      '点击桌面骰子进入肉鸽冒险。',
+      '点击钱袋可加入已有房间。',
+    ].join('\n'));
+  }
   openLobbyScene(): void { director.loadScene('Lobby'); }
 
   createRogueliteRoom(): void {
