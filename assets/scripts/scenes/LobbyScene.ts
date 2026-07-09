@@ -2,6 +2,7 @@ import { _decorator, Button, Color, Component, Label, Node, Prefab, Sprite, Spri
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { SUMMONER_SKILL_IDS, characterName, summonerSkillName, summonerSkillDescription, characterDescription, gameModeDescription } from '../core/DisplayText';
+import { applyButtonFrame as applySkinButtonFrame, applyUiFrame } from '../core/UiSkin';
 import { CharacterCard } from '../ui/lobby/CharacterCard';
 import { CharacterDetailDialog } from '../ui/lobby/CharacterDetailDialog';
 import { DuoSlotPicker } from '../ui/lobby/DuoSlotPicker';
@@ -15,6 +16,16 @@ import { characterList } from '../shared/characters';
 import type { Character, CharacterId, Player, Room, SummonerSkillId } from '../shared/types';
 
 const { ccclass, property } = _decorator;
+
+type LobbyTab = 'players' | 'settings' | 'characters' | 'skills' | 'lineup';
+
+const TAB_LABELS: Record<LobbyTab, string> = {
+  players: '玩家',
+  settings: '设置',
+  characters: '职业',
+  skills: '技能',
+  lineup: '阵容',
+};
 
 @ccclass('LobbyScene')
 export class LobbyScene extends Component {
@@ -114,6 +125,11 @@ export class LobbyScene extends Component {
   private infoDialog: InfoDialog | null = null;
   private statusText = '';
   private settingsAppliedRoomId = '';
+  private activeTab: LobbyTab = 'players';
+  private tabBarNode: Node | null = null;
+  private tabButtons = new Map<LobbyTab, Button>();
+  private roomActionNode: Node | null = null;
+  private contentPanelNode: Node | null = null;
   private readonly handleRoomUpdatedBound = (room: Room) => this.render(room);
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
@@ -162,7 +178,7 @@ export class LobbyScene extends Component {
       if (!allowDup) {
         const takenByOther = room.players.some(p => p.characterId === characterId && p.id !== me?.id);
         if (takenByOther) {
-          this.gameManager?.showToast('Character already taken', 2);
+          this.gameManager?.showToast('该职业已被选择', 2);
           return;
         }
       }
@@ -222,36 +238,110 @@ export class LobbyScene extends Component {
 
     if (this.statusLabel) {
       const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
-      const effectiveHint = this.modeHint || (mode === 'pve_roguelite' ? 'Roguelite: starting character locked, gain rewards through stages.' : '');
+      const effectiveHint = this.modeHint || (mode === 'pve_roguelite' ? '肉鸽模式：初始职业锁定，后续通过关卡获得奖励。' : '');
       const hint = effectiveHint ? `\n${effectiveHint}` : '';
-      this.statusLabel.string = `${this.lobbyTitle}\nRoom ${room.id} | ${mode} | ${room.players.length}/${room.settings.maxPlayers}\n${this.statusText}${hint}`;
+      this.statusLabel.string = `房间号 ${room.id}\n${this.lobbyTitle} | ${room.players.length}/${room.settings.maxPlayers}${hint}`;
     }
+    this.renderTabs(room);
+    this.renderActiveTab(room);
+    this.renderLobbyStartBar(room);
+    this.syncTabVisibility(room);
+  }
+
+  private renderActiveTab(room: Room): void {
+    switch (this.activeTab) {
+      case 'players':
+        this.renderPlayerTab(room);
+        break;
+      case 'settings':
+        this.renderRoomSettingsPanel(room);
+        break;
+      case 'characters':
+        this.renderCharacterButtons(room);
+        break;
+      case 'skills':
+        this.renderSkillButtons();
+        break;
+      case 'lineup':
+        this.renderDuoSlotPicker(room);
+        break;
+    }
+  }
+
+  private renderPlayerTab(room: Room): void {
     if (this.playerListNode && this.playerListItemPrefab) {
       this.renderPlayerListPrefab(room);
-    } else if (this.playerListLabel) {
-      this.playerListLabel.string = room.players
-        .map((player) => {
-          const meMark = player.clientId === this.gameManager?.localClientId ? '* ' : '  ';
-          const hostMark = player.isHost ? ' host' : '';
-          const botMark = player.isBot ? ' bot' : '';
-          return `${meMark}${player.nickname}${hostMark}${botMark}\n${characterName(player.characterId)} / ${summonerSkillName(player.summonerSkillId)}`;
-        })
-        .join('\n');
+      return;
     }
-    if (this.selectionLabel) {
-      this.selectionLabel.string = `Selected: ${characterName(this.selectedCharacterId)} / ${summonerSkillName(this.selectedSummonerSkillId)}`;
-    }
-
-    this.renderCharacterButtons(room);
-    this.renderSkillButtons();
-    this.renderRoomSettingsPanel(room);
-    this.renderLobbyStartBar(room);
-    this.renderDuoSlotPicker(room);
+    if (!this.playerListLabel) return;
+    this.playerListLabel.string = room.players
+      .map((player) => {
+        const meMark = player.clientId === this.gameManager?.localClientId ? '* ' : '  ';
+        const hostMark = player.isHost ? ' 房主' : '';
+        const botMark = player.isBot ? ' AI' : '';
+        return `${meMark}${player.nickname}${hostMark}${botMark}\n${characterName(player.characterId)} / ${summonerSkillName(player.summonerSkillId)}`;
+      })
+      .join('\n');
   }
 
   private renderStatus(status: string): void {
     this.statusText = status;
     if (this.room) this.render(this.room);
+  }
+
+  private tabsForRoom(room: Room): LobbyTab[] {
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
+    if (mode === 'duo_2v2') return ['players', 'settings', 'lineup'];
+    if (mode === 'pve_1v1' || mode === 'pve_roguelite') return ['characters', 'skills'];
+    return ['players', 'settings', 'characters', 'skills'];
+  }
+
+  private renderTabs(room: Room): void {
+    if (!this.tabBarNode) return;
+    const tabs = this.tabsForRoom(room);
+    if (!tabs.includes(this.activeTab)) this.activeTab = tabs[0] ?? 'players';
+    this.clearChildren(this.tabBarNode);
+    this.tabButtons.clear();
+
+    const width = Math.min(154, Math.floor(640 / Math.max(1, tabs.length)));
+    const total = width * tabs.length;
+    const startX = -total / 2 + width / 2;
+    tabs.forEach((tab, index) => {
+      const selected = tab === this.activeTab;
+      const button = this.createButton(`Tab_${tab}`, TAB_LABELS[tab], startX + index * width, 0, width, 56, 22, this.tabBarNode!);
+      applySkinButtonFrame(button, selected ? 'tabSelected' : 'tabNormal');
+      this.tintButtonLabel(button, selected ? new Color(255, 246, 220, 255) : new Color(38, 25, 14, 255));
+      button.node.on(Button.EventType.CLICK, () => this.selectTab(tab), this);
+      this.tabButtons.set(tab, button);
+    });
+  }
+
+  private selectTab(tab: LobbyTab): void {
+    if (this.activeTab === tab) return;
+    this.activeTab = tab;
+    if (this.room) this.render(this.room);
+  }
+
+  private syncTabVisibility(room: Room): void {
+    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
+    const showPlayers = this.activeTab === 'players';
+    const showSettings = this.activeTab === 'settings';
+    const showCharacters = this.activeTab === 'characters';
+    const showSkills = this.activeTab === 'skills';
+    const showLineup = this.activeTab === 'lineup' && mode === 'duo_2v2';
+
+    if (this.playerListNode) this.playerListNode.active = showPlayers;
+    if (this.playerListLabel) this.playerListLabel.node.active = showPlayers;
+    if (this.characterListNode) this.characterListNode.active = showCharacters;
+    if (this.skillListNode) this.skillListNode.active = showSkills;
+    if (this.selectionLabel) {
+      this.selectionLabel.node.active = showCharacters || showSkills || showLineup;
+      this.selectionLabel.string = showLineup
+        ? `当前：${characterName(this.selectedCharacterId)} / ${summonerSkillName(this.selectedSummonerSkillId)}`
+        : `已选择：${characterName(this.selectedCharacterId)} / ${summonerSkillName(this.selectedSummonerSkillId)}`;
+    }
+    if (this.roomSettingsPanel?.node?.isValid) this.roomSettingsPanel.node.active = showSettings;
+    if (this.duoSlotPicker?.node?.isValid) this.duoSlotPicker.node.active = showLineup;
   }
 
   private renderCharacterButtons(room: Room): void {
@@ -269,15 +359,16 @@ export class LobbyScene extends Component {
       }
     }
 
-    const visible = this.getVisibleCharacters(room).slice(0, 12);
+    const visible = this.getVisibleCharacters(room).slice(0, 8);
     visible.forEach((character, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
+      const col = index % 2;
+      const row = Math.floor(index / 2);
       const selected = character.id === this.selectedCharacterId;
       const taker = (!allowDup && !selected) ? (takenBy.get(character.id) ?? null) : null;
 
       if (this.characterCardPrefab) {
-        const node = this.instantiatePrefab(this.characterCardPrefab, `Character_${character.id}`, -215 + col * 215, 110 - row * 86, 200, 92, this.characterListNode!);
+        const node = this.instantiatePrefab(this.characterCardPrefab, `Character_${character.id}`, -165 + col * 330, 210 - row * 112, 300, 104, this.characterListNode!);
+        applyUiFrame(node, 'listCard');
         const card = node.getComponent(CharacterCard) ?? node.addComponent(CharacterCard);
         card.render(character, selected, taker);
         const button = node.getComponent(Button) ?? node.addComponent(Button);
@@ -287,10 +378,10 @@ export class LobbyScene extends Component {
         const button = this.createButton(
           `Character_${character.id}`,
           `${selected ? '> ' : ''}${characterName(character.id)}${takenLabel}`,
-          -215 + col * 215,
-          -row * 58,
-          200,
-          46,
+          -165 + col * 330,
+          210 - row * 86,
+          300,
+          72,
           18,
           this.characterListNode!
         );
@@ -308,7 +399,10 @@ export class LobbyScene extends Component {
     const count = Math.max(room.settings.maxPlayers, room.players.length, 1);
     for (let index = 0; index < count; index += 1) {
       const player = room.players[index] ?? null;
-      const node = this.instantiatePrefab(this.playerListItemPrefab, `Player_${index}`, 0, 28 - index * 56, 620, 52, this.playerListNode);
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const node = this.instantiatePrefab(this.playerListItemPrefab, `Player_${index}`, -165 + col * 330, 220 - row * 88, 300, 76, this.playerListNode);
+      applyUiFrame(node, player ? 'listCard' : 'listCardDisabled');
       const item = node.getComponent(PlayerListItem) ?? node.addComponent(PlayerListItem);
       item.render(player, index, localId, isHost, (p) => this.onKickPlayer(p));
     }
@@ -331,9 +425,9 @@ export class LobbyScene extends Component {
       if (!this.duoSlotPicker?.node?.isValid) {
         const pickerNode = new Node('DuoSlotPickerFallback');
         this.node.addChild(pickerNode);
-        pickerNode.setPosition(new Vec3(0, -525, 0));
+        pickerNode.setPosition(new Vec3(0, 20, 0));
         const t = pickerNode.addComponent(UITransform);
-        t.setContentSize(640, 150);
+        t.setContentSize(640, 440);
         this.duoSlotPicker = pickerNode.addComponent(DuoSlotPicker);
       }
       this.duoSlotPicker!.setSlotHandler((slotIndex) => this.chooseDuoSlot(slotIndex));
@@ -341,7 +435,7 @@ export class LobbyScene extends Component {
       return;
     }
     if (!this.duoSlotPicker?.node?.isValid) {
-      const node = this.instantiatePrefab(this.duoSlotPickerPrefab, 'DuoSlotPicker', 0, -525, 640, 150, this.node);
+      const node = this.instantiatePrefab(this.duoSlotPickerPrefab, 'DuoSlotPicker', 0, 20, 640, 440, this.node);
       this.duoSlotPicker = node.getComponent(DuoSlotPicker) ?? node.addComponent(DuoSlotPicker);
       this.duoSlotPicker.setSlotHandler((slotIndex) => this.chooseDuoSlot(slotIndex));
     }
@@ -367,7 +461,7 @@ export class LobbyScene extends Component {
     const takenByOtherTeam = otherTeamIds.has(this.selectedCharacterId);
 
     if (crossesOwnSlot || takenByOtherTeam) {
-      const reason = crossesOwnSlot ? 'Same character in both slots' : 'Character already taken by other team';
+      const reason = crossesOwnSlot ? '两个槽位不能选择同一职业' : '该职业已被其他队伍选择';
       this.gameManager?.showToast(reason, 2.5);
       return;
     }
@@ -383,7 +477,8 @@ export class LobbyScene extends Component {
     SUMMONER_SKILL_IDS.forEach((skillId, index) => {
       const selected = skillId === this.selectedSummonerSkillId;
       if (this.summonerSkillCardPrefab) {
-        const node = this.instantiatePrefab(this.summonerSkillCardPrefab, `Skill_${skillId}`, -260 + index * 130, 0, 120, 60, this.skillListNode!);
+        const node = this.instantiatePrefab(this.summonerSkillCardPrefab, `Skill_${skillId}`, 0, 210 - index * 92, 620, 82, this.skillListNode!);
+        applyUiFrame(node, 'listCard');
         const card = node.getComponent(SummonerSkillCard) ?? node.addComponent(SummonerSkillCard);
         card.render(skillId, selected);
         const button = node.getComponent(Button) ?? node.addComponent(Button);
@@ -392,11 +487,11 @@ export class LobbyScene extends Component {
         const button = this.createButton(
           `Skill_${skillId}`,
           `${selected ? '> ' : ''}${summonerSkillName(skillId)}`,
-          -260 + index * 130,
           0,
-          120,
-          44,
-          16,
+          210 - index * 82,
+          620,
+          72,
+          20,
           this.skillListNode!
         );
         button.node.on(Button.EventType.CLICK, () => this.chooseSummonerSkill(skillId), this);
@@ -410,21 +505,16 @@ export class LobbyScene extends Component {
   }
 
   private renderRoomSettingsPanel(room: Room): void {
-    if (this.fixedMaxPlayers > 0) {
-      this.roomSettingsPanel?.node.destroy();
-      this.roomSettingsPanel = null;
-      return;
-    }
     if (!this.roomSettingsPanel?.node?.isValid) {
       let node: Node;
       if (this.roomSettingsPanelPrefab) {
-        node = this.instantiatePrefab(this.roomSettingsPanelPrefab, 'RoomSettingsPanel', 0, -320, 640, 96, this.node);
+        node = this.instantiatePrefab(this.roomSettingsPanelPrefab, 'RoomSettingsPanel', 0, 95, 640, 360, this.node);
       } else {
         node = new Node('RoomSettingsPanel');
         this.node.addChild(node);
-        node.setPosition(new Vec3(0, -320, 0));
+        node.setPosition(new Vec3(0, 95, 0));
         const t = node.getComponent(UITransform) ?? node.addComponent(UITransform);
-        t.setContentSize(640, 96);
+        t.setContentSize(640, 360);
       }
       this.roomSettingsPanel = node.getComponent(RoomSettingsPanel) ?? node.addComponent(RoomSettingsPanel);
       this.roomSettingsPanel.setHandlers(
@@ -525,31 +615,42 @@ export class LobbyScene extends Component {
   };
 
   private ensureMinimalUi(): void {
-    // Decorative sprites — invisible without frames, safe to always create
-    this.ensureSpriteNode('LobbyParchmentPanel', 0, 145, 670, 600, this.parchmentFrame);
-    this.ensureSpriteNode('PlayerSeatPanel', 0, 430, 640, 120, this.seatFrame ?? this.statusFrame);
-    this.ensureSpriteNode('SkillPanel', 0, -245, 640, 92, this.statusFrame);
+    const panel = this.ensureSpriteNode('LobbyParchmentPanel', 0, 0, 690, 1200, this.parchmentFrame);
+    applyUiFrame(panel, 'panelParchment');
 
-    // LobbyStartBar — prefer manual @property binding, fallback to prefab instantiation
+    this.statusLabel ??= this.ensureLabel('RoomHeaderLabel', 0, 525, 640, 96, 24);
+    applyUiFrame(this.statusLabel.node, 'inputRoom');
+
+    // TODO(P13.1): wire room actions here: invite copy, rule guide, and room navigation buttons.
+    this.roomActionNode ??= this.ensureNode('RoomActionRow', 0, 452, 640, 58);
+    this.tabBarNode ??= this.ensureNode('LobbyTabBar', 0, 380, 640, 60);
+
+    this.contentPanelNode ??= this.ensureSpriteNode('LobbyContentPanel', 0, 42, 660, 610, this.statusFrame);
+    applyUiFrame(this.contentPanelNode, 'panelStatus');
+
+    this.playerListNode ??= this.ensureNode('PlayerList', 0, 30, 640, 540);
+    this.selectionLabel ??= this.ensureLabel('SelectionLabel', 0, 315, 620, 42, 20);
+    this.characterListNode ??= this.ensureNode('CharacterList', 0, 30, 640, 540);
+    this.skillListNode ??= this.ensureNode('SkillList', 0, 30, 640, 540);
+
     if (!this.lobbyStartBar && this.lobbyStartBarPrefab) {
-      const startBarNode = this.instantiatePrefab(this.lobbyStartBarPrefab, 'LobbyStartBar', 0, -405, 640, 82, this.node);
+      const startBarNode = this.instantiatePrefab(this.lobbyStartBarPrefab, 'LobbyStartBar', 0, -555, 650, 92, this.node);
+      this.lobbyStartBar = startBarNode.getComponent(LobbyStartBar) ?? startBarNode.addComponent(LobbyStartBar);
+    } else if (!this.lobbyStartBar) {
+      const startBarNode = this.ensureSpriteNode('LobbyStartBar', 0, -555, 650, 92, this.statusFrame);
+      applyUiFrame(startBarNode, 'panelStatus');
       this.lobbyStartBar = startBarNode.getComponent(LobbyStartBar) ?? startBarNode.addComponent(LobbyStartBar);
     }
     if (this.lobbyStartBar) {
+      this.lobbyStartBar.panelFrame = this.statusFrame;
+      this.lobbyStartBar.buttonFrame = this.actionCardFrame;
       this.startGameButton ??= this.lobbyStartBar.startButton;
     }
 
-    // Fallback labels/buttons — only when enableFallbackUi is true
-    if (!this.enableFallbackUi) return;
-
-    const L = this.FALLBACK;
-    this.statusLabel ??= this.ensureLabel('StatusLabel', L.STATUS.x, L.STATUS.y, L.STATUS.w, L.STATUS.h, L.STATUS.fs);
-    this.playerListNode ??= this.ensureNode('PlayerList', L.PLAYER_LIST.x, L.PLAYER_LIST.y, L.PLAYER_LIST.w, L.PLAYER_LIST.h);
-    this.playerListLabel ??= this.playerListItemPrefab ? null : this.ensureLabel('PlayerListLabel', L.PLAYER_LIST.x, L.PLAYER_LIST.y, L.PLAYER_LIST.w, L.PLAYER_LIST.h, L.PLAYER_LIST_LABEL_FS);
-    this.selectionLabel ??= this.ensureLabel('SelectionLabel', L.SELECTION.x, L.SELECTION.y, L.SELECTION.w, L.SELECTION.h, L.SELECTION.fs);
-    this.characterListNode ??= this.ensureNode('CharacterList', L.CHARACTER_LIST.x, L.CHARACTER_LIST.y, L.CHARACTER_LIST.w, L.CHARACTER_LIST.h);
-    this.skillListNode ??= this.ensureNode('SkillList', L.SKILL_LIST.x, L.SKILL_LIST.y, L.SKILL_LIST.w, L.SKILL_LIST.h);
-    this.startGameButton ??= this.createButton('StartGameButton', this.startButtonText, L.START.x, L.START.y, L.START.w, L.START.h, L.START.fs, this.node);
+    if (!this.startGameButton) {
+      this.startGameButton = this.createButton('StartGameButton', this.startButtonText, 0, -555, 520, 68, 28, this.node);
+    }
+    applySkinButtonFrame(this.startGameButton, 'buttonPrimary');
     this.setButtonLabel(this.startGameButton, this.startButtonText);
   }
 
@@ -591,6 +692,7 @@ export class LobbyScene extends Component {
     const button = node.addComponent(Button);
     button.interactable = true;
     this.applyButtonFrame(button, this.frameForButton(name));
+    this.applyAutoSkin(button, name);
 
     const labelNode = new Node('Label');
     node.addChild(labelNode);
@@ -606,6 +708,19 @@ export class LobbyScene extends Component {
     label.enableWrapText = true;
     label.color = new Color(57, 34, 17, 255);
     return button;
+  }
+
+  private applyAutoSkin(button: Button, name: string): void {
+    if (name.startsWith('Tab_')) return;
+    if (name === 'StartGameButton') {
+      applySkinButtonFrame(button, 'buttonPrimary');
+      return;
+    }
+    if (name.startsWith('Character_') || name.startsWith('Skill_')) {
+      applySkinButtonFrame(button, 'listCard');
+      return;
+    }
+    applySkinButtonFrame(button, 'buttonNormal');
   }
 
   private ensureSpriteNode(name: string, x: number, y: number, width: number, height: number, frame: SpriteFrame | null): Node {
@@ -651,6 +766,11 @@ export class LobbyScene extends Component {
   private setButtonLabel(button: Button | null, text: string): void {
     const label = button?.node.getChildByName('Label')?.getComponent(Label);
     if (label) label.string = text;
+  }
+
+  private tintButtonLabel(button: Button | null, color: Color): void {
+    const label = button?.node.getChildByName('Label')?.getComponent(Label);
+    if (label) label.color = color;
   }
 
   private clearChildren(node: Node): void {

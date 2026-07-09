@@ -46,7 +46,7 @@ export class CharacterCard extends Component {
       this.descriptionLabel.string = character.shortDescription ?? character.description?.[0] ?? '';
     }
     if (this.takenLabel) {
-      this.takenLabel.string = isTaken ? `Taken: ${takenBy}` : '';
+      this.takenLabel.string = isTaken ? `已被选择：${takenBy}` : '';
     }
 
     const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);

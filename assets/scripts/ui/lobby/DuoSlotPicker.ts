@@ -53,60 +53,57 @@ export class DuoSlotPicker extends Component {
     const slot0 = room.duoSlots?.find((slot) => slot.controllerId === controllerId && slot.slotIndex === 0);
     const slot1 = room.duoSlots?.find((slot) => slot.controllerId === controllerId && slot.slotIndex === 1);
 
-    // Detect conflicts: characters already used by other teams, or by the other slot
     const occupiedIds = new Set<CharacterId>();
     for (const slot of room.duoSlots ?? []) {
-      if (slot.characterId && slot.controllerId !== controllerId) {
-        occupiedIds.add(slot.characterId);
-      }
+      if (slot.characterId && slot.controllerId !== controllerId) occupiedIds.add(slot.characterId);
     }
-    // Cross-slot conflict: the OTHER slot's character
+
     const slotConflict0 = slot1?.characterId && slot1.characterId === selectedCharacterId;
     const slotConflict1 = slot0?.characterId && slot0.characterId === selectedCharacterId;
     const globalConflict = occupiedIds.has(selectedCharacterId);
 
-    if (this.titleLabel) this.titleLabel.string = '2V2 Slots';
+    if (this.titleLabel) this.titleLabel.string = '2V2 双角色阵容';
     if (this.slot0Label) {
-      const warn0 = slotConflict0 || globalConflict ? ' ⚠' : '';
-      this.slot0Label.string = this.slotText(1, slot0?.characterId, slot0?.summonerSkillId) + warn0;
+      const warning = slotConflict0 || globalConflict ? ' !' : '';
+      this.slot0Label.string = this.slotText(1, slot0?.characterId, slot0?.summonerSkillId) + warning;
     }
     if (this.slot1Label) {
-      const warn1 = slotConflict1 || globalConflict ? ' ⚠' : '';
-      this.slot1Label.string = this.slotText(2, slot1?.characterId, slot1?.summonerSkillId) + warn1;
+      const warning = slotConflict1 || globalConflict ? ' !' : '';
+      this.slot1Label.string = this.slotText(2, slot1?.characterId, slot1?.summonerSkillId) + warning;
     }
     if (this.hintLabel) {
-      const conflictMsg = slotConflict0 || slotConflict1
-        ? '⚠ Same character in both slots!'
+      const conflictMessage = slotConflict0 || slotConflict1
+        ? '两个槽位不能选择同一职业'
         : globalConflict
-          ? '⚠ Character already taken by another team'
+          ? '该职业已被其他队伍选择'
           : '';
-      this.hintLabel.string = conflictMsg || `Tap a slot to set: ${characterName(selectedCharacterId)} / ${summonerSkillName(selectedSummonerSkillId)}`;
+      this.hintLabel.string = conflictMessage || `点击槽位写入：${characterName(selectedCharacterId)} / ${summonerSkillName(selectedSummonerSkillId)}`;
     }
   }
 
   private slotText(index: number, characterId?: CharacterId, skillId?: SummonerSkillId): string {
-    return `Slot ${index}\n${characterName(characterId)}\n${summonerSkillName(skillId)}`;
+    return `槽位 ${index}\n${characterName(characterId)}\n${summonerSkillName(skillId)}`;
   }
 
   private ensureMinimalUi(): void {
     const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
-    if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) transform.setContentSize(640, 150);
+    if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) transform.setContentSize(640, 440);
     if (this.panelFrame) {
       const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);
       sprite.spriteFrame = this.panelFrame;
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     }
 
-    this.titleLabel ??= this.makeLabel('TitleLabel', 0, 56, 600, 26, 18);
-    this.slot0Button ??= this.makeSlotButton('Slot0Button', -155, 0);
-    this.slot1Button ??= this.makeSlotButton('Slot1Button', 155, 0);
-    this.slot0Label ??= this.makeButtonLabel(this.slot0Button.node, 'Label', 260, 82, 15);
-    this.slot1Label ??= this.makeButtonLabel(this.slot1Button.node, 'Label', 260, 82, 15);
-    this.hintLabel ??= this.makeLabel('HintLabel', 0, -58, 600, 24, 13);
+    this.titleLabel ??= this.makeLabel('TitleLabel', 0, 180, 600, 32, 22);
+    this.slot0Button ??= this.makeSlotButton('Slot0Button', 0, 78);
+    this.slot1Button ??= this.makeSlotButton('Slot1Button', 0, -58);
+    this.slot0Label ??= this.makeButtonLabel(this.slot0Button.node, 'Label', 560, 110, 18);
+    this.slot1Label ??= this.makeButtonLabel(this.slot1Button.node, 'Label', 560, 110, 18);
+    this.hintLabel ??= this.makeLabel('HintLabel', 0, -180, 600, 42, 16);
   }
 
   private makeSlotButton(name: string, x: number, y: number): Button {
-    const node = this.makeNode(name, x, y, 280, 86);
+    const node = this.makeNode(name, x, y, 580, 118);
     if (this.slotFrame) {
       const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
       sprite.spriteFrame = this.slotFrame;

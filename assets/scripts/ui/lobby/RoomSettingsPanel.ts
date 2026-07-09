@@ -87,10 +87,11 @@ export class RoomSettingsPanel extends Component {
     const canEditSettings = isHost && fixedMaxPlayers <= 0 && mode === 'classic';
     this.currentAllowDuplicateCharacters = room.settings.allowDuplicateCharacters;
 
-    if (this.titleLabel) this.titleLabel.string = 'Room Settings';
+    if (this.titleLabel) this.titleLabel.string = '房间设置';
     if (this.summaryLabel) {
-      const dupText = room.settings.allowDuplicateCharacters ? 'dup ok' : 'no dup';
-      this.summaryLabel.string = `Mode: ${mode} | ${room.settings.maxPlayers}P | ${dupText}`;
+      const modeText = mode === 'duo_2v2' ? '2V2 双角色' : '经典对战';
+      const dupText = room.settings.allowDuplicateCharacters ? '允许重复职业' : '禁止重复职业';
+      this.summaryLabel.string = `${modeText} | ${room.settings.maxPlayers} 人 | ${dupText}`;
     }
 
     const editButtons = [this.max2Button, this.max4Button, this.max8Button, this.duplicateButton];
@@ -108,13 +109,13 @@ export class RoomSettingsPanel extends Component {
       this.modeInfoButton.interactable = true;
       this.modeInfoButton.node.active = !isPvE;
     }
-    this.setButtonLabel(this.duplicateButton, room.settings.allowDuplicateCharacters ? 'Duplicate: ON' : 'Duplicate: OFF');
-    if (this.modeClassicButton) this.setButtonLabel(this.modeClassicButton, mode === 'classic' ? '> Classic' : 'Classic');
-    if (this.modeDuoButton) this.setButtonLabel(this.modeDuoButton, mode === 'duo_2v2' ? '> Duo' : 'Duo');
+    this.setButtonLabel(this.duplicateButton, room.settings.allowDuplicateCharacters ? '允许重复' : '禁止重复');
+    if (this.modeClassicButton) this.setButtonLabel(this.modeClassicButton, mode === 'classic' ? '> 经典' : '经典');
+    if (this.modeDuoButton) this.setButtonLabel(this.modeDuoButton, mode === 'duo_2v2' ? '> 2V2' : '2V2');
 
     // Show non-host hint
     if (this.summaryLabel && !isHost) {
-      this.summaryLabel.string += ' (host only)';
+      this.summaryLabel.string += '（仅房主可改）';
     }
   }
 
@@ -129,12 +130,12 @@ export class RoomSettingsPanel extends Component {
 
     this.titleLabel ??= this.makeLabel('TitleLabel', -220, 22, 170, 24, 17);
     this.summaryLabel ??= this.makeLabel('SummaryLabel', 70, 22, 360, 24, 14);
-    this.modeClassicButton ??= this.makeButton('ModeClassicButton', 'Classic', -210, -24, 100, 34, 13);
-    this.modeDuoButton    ??= this.makeButton('ModeDuoButton', 'Duo', -100, -24, 100, 34, 13);
+    this.modeClassicButton ??= this.makeButton('ModeClassicButton', '经典', -210, -24, 100, 34, 13);
+    this.modeDuoButton    ??= this.makeButton('ModeDuoButton', '2V2', -100, -24, 100, 34, 13);
     this.max2Button       ??= this.makeButton('Max2Button', '2P', 10, -24, 70, 34, 14);
     this.max4Button       ??= this.makeButton('Max4Button', '4P', 90, -24, 70, 34, 14);
     this.max8Button       ??= this.makeButton('Max8Button', '8P', 170, -24, 70, 34, 14);
-    this.duplicateButton  ??= this.makeButton('DuplicateButton', 'Duplicate: ON', 250, -24, 180, 34, 13);
+    this.duplicateButton  ??= this.makeButton('DuplicateButton', '允许重复', 250, -24, 180, 34, 13);
     this.modeInfoButton   ??= this.makeButton('ModeInfoButton', '?', 290, 18, 32, 24, 14);
   }
 

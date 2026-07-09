@@ -41,9 +41,9 @@ export class PlayerListItem extends Component {
     this._kickHandler = onKick ?? null;
 
     if (!player) {
-      if (this.nameLabel) this.nameLabel.string = `Seat ${index + 1}: Empty`;
-      if (this.roleLabel) this.roleLabel.string = '';
-      if (this.stateLabel) this.stateLabel.string = 'EMPTY';
+      if (this.nameLabel) this.nameLabel.string = `${index + 1} 空位`;
+      if (this.roleLabel) this.roleLabel.string = '等待加入';
+      if (this.stateLabel) this.stateLabel.string = '等待';
       if (this.kickButton) this.kickButton.node.active = false;
       this.applyFrame(false, false);
       return;
@@ -54,10 +54,10 @@ export class PlayerListItem extends Component {
     if (this.roleLabel) this.roleLabel.string = `${characterName(player.characterId)} / ${summonerSkillName(player.summonerSkillId)}`;
     if (this.stateLabel) {
       const tags = [
-        player.isHost ? 'HOST' : '',
+        player.isHost ? '房主' : '',
         player.isBot ? 'AI' : '',
-        player.isOnline === false ? 'OFF' : 'ON',
-        isSelf ? 'YOU' : '',
+        player.isOnline === false ? '离线' : '在线',
+        isSelf ? '你' : '',
       ].filter(Boolean);
       this.stateLabel.string = tags.join(' ');
     }

@@ -5,11 +5,11 @@ import type { SummonerSkillId } from '../../shared/types';
 const { ccclass, property } = _decorator;
 
 const SUMMONER_SKILL_SHORT_TEXT: Record<SummonerSkillId, string> = {
-  lucky_plus_one: 'Roll +1',
-  first_aid: 'Heal self',
-  iron_wall: 'Gain shield',
-  fate_reroll: 'Reroll',
-  last_stand: 'Comeback',
+  lucky_plus_one: '骰点 +1',
+  first_aid: '回复自身',
+  iron_wall: '获得护盾',
+  fate_reroll: '重掷骰子',
+  last_stand: '残血反击',
 };
 
 @ccclass('SummonerSkillCard')
@@ -39,7 +39,7 @@ export class SummonerSkillCard extends Component {
     this.skillId = skillId;
     if (this.titleLabel) this.titleLabel.string = summonerSkillName(skillId);
     if (this.descriptionLabel) this.descriptionLabel.string = SUMMONER_SKILL_SHORT_TEXT[skillId] ?? '';
-    if (this.selectedLabel) this.selectedLabel.string = selected ? 'SELECTED' : '';
+    if (this.selectedLabel) this.selectedLabel.string = selected ? '已选择' : '';
 
     const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);
     sprite.spriteFrame = selected && this.selectedFrame ? this.selectedFrame : this.normalFrame;
@@ -49,7 +49,7 @@ export class SummonerSkillCard extends Component {
 
   private ensureMinimalUi(): void {
     const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
-    if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) transform.setContentSize(120, 60);
+    if (transform.contentSize.width <= 0 || transform.contentSize.height <= 0) transform.setContentSize(620, 82);
     this.node.getComponent(Button) ?? this.node.addComponent(Button);
     if (this.normalFrame) {
       const sprite = this.node.getComponent(Sprite) ?? this.node.addComponent(Sprite);
@@ -57,9 +57,9 @@ export class SummonerSkillCard extends Component {
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     }
 
-    this.titleLabel ??= this.makeLabel('TitleLabel', 0, 16, 110, 22, 14);
-    this.descriptionLabel ??= this.makeLabel('DescriptionLabel', 0, -7, 110, 20, 12);
-    this.selectedLabel ??= this.makeLabel('SelectedLabel', 0, -25, 110, 16, 10);
+    this.titleLabel ??= this.makeLabel('TitleLabel', -220, 18, 160, 28, 18);
+    this.descriptionLabel ??= this.makeLabel('DescriptionLabel', 30, -2, 430, 34, 15);
+    this.selectedLabel ??= this.makeLabel('SelectedLabel', 235, 18, 120, 24, 13);
   }
 
   private makeLabel(name: string, x: number, y: number, width: number, height: number, fontSize: number): Label {
