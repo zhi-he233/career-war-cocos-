@@ -9,10 +9,13 @@ export type UiFrameKey =
   | 'buttonNormal'
   | 'buttonDisabled'
   | 'buttonDanger'
+  | 'buttonClose'
   | 'inputRoom'
   | 'listCard'
   | 'listCardDisabled'
   | 'pill'
+  | 'iconHelp'
+  | 'iconInfo'
   | 'seat'
   | 'seatSmall'
   | 'seatAlt'
@@ -29,8 +32,16 @@ export type UiFrameKey =
   | 'cardBoss'
   | 'cardEvent'
   | 'cardShop'
-  | 'cardRest';
+  | 'cardRest'
+  | 'bgDesk'        // 空白桌面
+  | 'bgCard'         // 卡片底图
+  | 'decCandle'      // 蜡烛
+  | 'decDice';       // 骰子
 
+// Runtime-loaded skins must stay under assets/resources because resources.load()
+// cannot load files from assets/art/ui directly. assets/art/ui is only a source
+// mirror for browsing/copying art; these paths intentionally point to
+// assets/resources/art/...
 const FRAME_PATHS: Record<UiFrameKey, string> = {
   panelParchment: 'art/UI/panel/羊皮卷大模板/spriteFrame',
   panelStatus: 'art/UI/panel/状态1/spriteFrame',
@@ -40,10 +51,13 @@ const FRAME_PATHS: Record<UiFrameKey, string> = {
   buttonNormal: 'art/UI/common/普通按钮/spriteFrame',
   buttonDisabled: 'art/UI/common/禁用按钮/spriteFrame',
   buttonDanger: 'art/UI/common/危险按钮/spriteFrame',
+  buttonClose: 'art/UI/common/关闭按钮/spriteFrame',
   inputRoom: 'art/UI/lobby/房间号输入框/spriteFrame',
   listCard: 'art/UI/lobby/普通状态小列表卡片/spriteFrame',
   listCardDisabled: 'art/UI/lobby/禁用状态小列表卡片/spriteFrame',
   pill: 'art/UI/common/小胶囊/spriteFrame',
+  iconHelp: 'art/UI/common/帮助问号/spriteFrame',
+  iconInfo: 'art/UI/common/详细信息/spriteFrame',
   seat: 'art/UI/battle/席位/spriteFrame',
   seatSmall: 'art/UI/battle/席位1/spriteFrame',
   seatAlt: 'art/UI/battle/席位2/spriteFrame',
@@ -61,6 +75,10 @@ const FRAME_PATHS: Record<UiFrameKey, string> = {
   cardEvent: 'art/UI/roguelite/问号事件卡片/spriteFrame',
   cardShop: 'art/UI/roguelite/商店卡片/spriteFrame',
   cardRest: 'art/UI/roguelite/篝火卡片/spriteFrame',
+  bgDesk: 'art/主页/空白桌面/spriteFrame',
+  bgCard: 'art/主页/卡片/spriteFrame',
+  decCandle: 'art/主页/蜡烛/spriteFrame',
+  decDice: 'art/主页/骰子/spriteFrame',
 };
 
 const cache = new Map<UiFrameKey, SpriteFrame | null>();

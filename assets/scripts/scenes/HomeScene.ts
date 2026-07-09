@@ -2,7 +2,6 @@ import {
   _decorator,
   Button,
   Color,
-  Component,
   EditBox,
   Graphics,
   Label,
@@ -17,45 +16,25 @@ import {
   director,
   sys,
 } from 'cc';
-import type { GameMode, Room, RoomListItem } from '../shared/types';
+import type { Room, RoomListItem } from '../shared/types';
 import { GameManager } from '../core/GameManager';
 import { ServerActions } from '../core/ServerActions';
 import { RuleGuidePanel } from '../ui/system/RuleGuidePanel';
-import { ruleGuidePlainText } from '../core/DisplayText';
 import { ToastLayer } from '../ui/system/ToastLayer';
+import { MobileSceneBase } from '../ui/MobileSceneBase';
+import { MobileUIFactory as F, COLORS, FONTS, LAYOUT, DESIGN_W, DESIGN_H } from '../ui/MobileUIFactory';
+import { createMockRoomList, type MockRoomListItem } from '../mock/MockData';
+import type { UiFrameKey } from '../core/UiSkin';
 
 const { ccclass, property } = _decorator;
-const CLIENT_ID_KEY = 'career-war-cocos-client-id';
 const LAST_ROOM_ID_KEY = 'career-war-cocos-last-room-id';
 const LAST_PLAYER_ID_KEY = 'career-war-cocos-player-id';
 
 type Ack<T = Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
-type SceneName =
-  | 'ClassicMode'
-  | 'Classic1v1Lobby'
-  | 'DuoLobby'
-  | 'PveLobby'
-  | 'RogueliteLobby'
-  | 'Lobby'
-  | 'Battle'
-  | 'RogueliteBattle'
-  | 'Roguelite'
-  | 'Profile';
 
 @ccclass('HomeScene')
-export class HomeScene extends Component {
-  @property
-  serverUrl = 'http://localhost:3001';
-
-  @property
-  nickname = 'Player';
-
-  @property
-  clientId = 'cocos-client';
-
-  @property
-  enableFallbackUi = false;
-
+export class HomeScene extends MobileSceneBase {
+  // ── Editor bindings (optional, fallback UI fills in) ──
   @property({ type: Label })
   statusLabel: Label | null = null;
 
@@ -89,91 +68,262 @@ export class HomeScene extends Component {
   @property
   diceRollDuration = 0.72;
 
-  @property
-  fallbackSceneDelay = 0.8;
-
-  private gameManager: GameManager | null = null;
-  private serverActions!: ServerActions;
-  private roomList: RoomListItem[] = [];
+  // ── Private state ──
+  private roomList: MockRoomListItem[] = [];
   private infoPanelNode: Node | null = null;
   private toastNode: Node | null = null;
+  private joinPanelNode: Node | null = null;
   private ruleGuidePanel: RuleGuidePanel | null = null;
   private toastLayer: ToastLayer | null = null;
   private isLaunchingRoguelite = false;
   private readonly handleStatusUpdatedBound = (status: string) => this.renderStatus(status);
 
-  onLoad(): void {
-    if (this.enableFallbackUi) this.ensureMinimalUi();
+  // ═══════════════════════════════════════════════════════════
+  // Layout Constants (720×1280 design space)
+  // ═══════════════════════════════════════════════════════════
+  private readonly L = {
+    TITLE_Y:          480,
+    TITLE_PANEL_W:    560,
+    TITLE_PANEL_H:    140,
+    SUBTITLE_Y:       430,
+    BUTTON_START_Y:   280,
+    BUTTON_JOIN_Y:    160,
+    BUTTON_SETTINGS_Y: 40,
+    BUTTON_W:         400,
+    BUTTON_H:         72,
+    DECO_LEFT_X:      -180,
+    DECO_RIGHT_X:     180,
+    DECO_CANDLE_Y:    300,
+    DECO_DICE_Y:      200,
+    DECO_MUG_Y:       100,
+    STATUS_Y:         -520,
+    STATUS_W:         620,
+    STATUS_H:         60,
+    JOIN_PANEL_W:     520,
+    JOIN_PANEL_H:     360,
+    JOIN_PANEL_Y:     -20,
+  } as const;
 
-    this.clientId = this.getClientId();
+  // ═══════════════════════════════════════════════════════════
+  // Lifecycle
+  // ═══════════════════════════════════════════════════════════
+
+  override onLoad(): void {
+    super.onLoad();
+
+    // Set up after base class init
     this.gameManager = GameManager.getInstance();
-    this.serverActions = new ServerActions(this.gameManager);
-    this.gameManager.setLocalPlayer(this.clientId, this.nickname);
+    this.serverActions = new ServerActions(this.gameManager!);
+
+    this.gameManager!.onStatusUpdated(this.handleStatusUpdatedBound, this);
     this.ensureOverlayPrefabs();
-    this.gameManager.onStatusUpdated(this.handleStatusUpdatedBound, this);
-    this.joinRoomButton?.node.on(Button.EventType.CLICK, this.joinRoom, this);
-    this.refreshRoomsButton?.node.on(Button.EventType.CLICK, this.requestRoomList, this);
-    this.renderStatus(this.gameManager.getStatus());
-    if (!this.enableFallbackUi) this.warnMissingBindings();
-    this.renderRoomList();
+    this.renderStatus(this.gameManager!.getStatus());
     this.tryAutoResume();
   }
 
   onDestroy(): void {
     this.gameManager?.offStatusUpdated(this.handleStatusUpdatedBound, this);
-    this.joinRoomButton?.node.off(Button.EventType.CLICK, this.joinRoom, this);
-    this.refreshRoomsButton?.node.off(Button.EventType.CLICK, this.requestRoomList, this);
   }
 
-  createClassicRoom(): void {
-    this.loadScene('ClassicMode');
+  // ═══════════════════════════════════════════════════════════
+  // Mobile-First UI (enableFallbackUi=true)
+  // ═══════════════════════════════════════════════════════════
+
+  ensureMinimalUi(): void {
+    this.createBackground();
+    this.createTitlePanel();
+    this.createDecorations();
+    this.createMainButtons();
+    this.createStatusArea();
   }
 
-  createPveRoom(): void {
-    this.launchMode('pve_1v1', 'PveLobby');
+  private createBackground(): void {
+    F.makeSkinnedBackground(this.node, 'bgDesk');
   }
 
-  createRogueliteRoom(): void {
-    if (this.isLaunchingRoguelite) return;
-    this.isLaunchingRoguelite = true;
-    this.playDiceRoll(() => {
-      this.isLaunchingRoguelite = false;
-      this.launchMode('pve_roguelite', 'RogueliteLobby');
+  private createTitlePanel(): void {
+    const { TITLE_Y, TITLE_PANEL_W, TITLE_PANEL_H } = this.L;
+    const result = F.makeSkinnedPanel(this.node, 0, TITLE_Y,
+      TITLE_PANEL_W, TITLE_PANEL_H, undefined, 'panelParchment');
+
+    F.makeLabel('MainTitle', result.bg, 0, 20, TITLE_PANEL_W - 40, 52,
+      FONTS.TITLE + 8, '职业互怼', COLORS.GOLD_TEXT)
+      .horizontalAlign = Label.HorizontalAlign.CENTER;
+
+    F.makeLabel('Subtitle', result.bg, 0, -30, TITLE_PANEL_W - 60, 32,
+      FONTS.SMALL, '— 选择你的职业，投出命运之骰 —', COLORS.FANTASY_GOLD)
+      .horizontalAlign = Label.HorizontalAlign.CENTER;
+  }
+
+  private createDecorations(): void {
+    // Use real candle & dice images where available, fallback to emoji labels
+    const decorConfig: Array<{name: string; y: number; x: number; key: UiFrameKey | null; emoji: string; msg: string; w: number; h: number}> = [
+      { name: 'CandleProp', y: this.L.DECO_CANDLE_Y, x: this.L.DECO_LEFT_X,  key: 'decCandle', emoji: '🕯️', msg: '烛火晃了一下。', w: 64, h: 64 },
+      { name: 'DiceProp',   y: this.L.DECO_DICE_Y,   x: this.L.DECO_RIGHT_X, key: 'decDice',   emoji: '🎲', msg: '骰子滚了一下。', w: 64, h: 64 },
+      { name: 'MugProp',    y: this.L.DECO_MUG_Y,    x: this.L.DECO_LEFT_X,  key: null,        emoji: '🍺', msg: '杯子被轻轻碰了一下。', w: 48, h: 48 },
+    ];
+
+    decorConfig.forEach((d) => {
+      let node: Node;
+      if (d.key) {
+        node = F.makeSkinnedSprite(d.name, this.node, d.x, d.y, d.w, d.h, d.key, d.emoji);
+      } else {
+        node = F.makeNode(d.name, this.node, d.x, d.y, d.w, d.h);
+        const label = node.addComponent(Label);
+        label.string = d.emoji;
+        label.fontSize = 28;
+        label.color = COLORS.FANTASY_GOLD;
+      }
+      node.on(Node.EventType.TOUCH_END, () => this.playPropTap(node, d.msg));
     });
   }
 
-  openRuleGuide(): void {
-    if (this.ruleGuidePanel) {
-      this.ruleGuidePanel.open();
+  private createMainButtons(): void {
+    const { BUTTON_START_Y, BUTTON_JOIN_Y, BUTTON_SETTINGS_Y, BUTTON_W, BUTTON_H } = this.L;
+
+    const startBtn = F.makeSkinnedButton('StartGameBtn', '开始游戏', this.node,
+      0, BUTTON_START_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON + 2, 'buttonPrimary', 'primary');
+    F.addButtonFeedback(startBtn.button);
+    startBtn.button.node.on(Button.EventType.CLICK, () => this.loadScene('ClassicMode'));
+
+    const joinBtn = F.makeSkinnedButton('JoinRoomBtn', '加入房间', this.node,
+      0, BUTTON_JOIN_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON, 'buttonNormal', 'normal');
+    F.addButtonFeedback(joinBtn.button);
+    joinBtn.button.node.on(Button.EventType.CLICK, () => this.toggleJoinPanel());
+
+    const settingsBtn = F.makeSkinnedButton('SettingsBtn', '玩家档案', this.node,
+      0, BUTTON_SETTINGS_Y, BUTTON_W, BUTTON_H, FONTS.BUTTON, 'buttonNormal', 'normal');
+    F.addButtonFeedback(settingsBtn.button);
+    settingsBtn.button.node.on(Button.EventType.CLICK, () => director.loadScene('Profile'));
+  }
+
+  private createStatusArea(): void {
+    const { STATUS_Y, STATUS_W, STATUS_H } = this.L;
+    const panel = F.makeNode('StatusArea', this.node, 0, STATUS_Y, STATUS_W, STATUS_H);
+    const g = panel.getComponent(Graphics) ?? panel.addComponent(Graphics);
+    F.drawWoodenPanel(g, -STATUS_W/2, -STATUS_H/2, STATUS_W, STATUS_H, 8);
+
+    this.statusLabel = F.makeLabel('StatusLabel', panel, 0, 0, STATUS_W - 20, STATUS_H - 8,
+      FONTS.SMALL, '服务器未连接 — 展示模式', COLORS.FANTASY_GOLD);
+    this.statusLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+  }
+
+  // ── Join Room Panel (slide-in overlay) ──
+
+  private toggleJoinPanel(): void {
+    if (this.joinPanelNode?.isValid) {
+      this.joinPanelNode.destroy();
+      this.joinPanelNode = null;
       return;
     }
-    this.showInfoPanel('规则说明', ruleGuidePlainText());
+    this.showJoinPanel();
   }
 
-  openProfile(): void {
-    director.loadScene('Profile');
+  private showJoinPanel(): void {
+    const { JOIN_PANEL_W, JOIN_PANEL_H, JOIN_PANEL_Y } = this.L;
+
+    // Overlay
+    const overlay = F.makeNode('JoinOverlay', this.node, 0, 0, DESIGN_W, DESIGN_H);
+    overlay.setSiblingIndex(999);
+    const og = overlay.getComponent(Graphics) ?? overlay.addComponent(Graphics);
+    og.clear();
+    og.fillColor = COLORS.OVERLAY_DARK;
+    og.rect(-DESIGN_W/2, -DESIGN_H/2, DESIGN_W, DESIGN_H);
+    og.fill();
+    overlay.on(Node.EventType.TOUCH_END, () => this.toggleJoinPanel());
+
+    // Panel — use parchment texture or Graphics fallback
+    const panelResult = F.makeSkinnedPanel(this.node, 0, JOIN_PANEL_Y,
+      JOIN_PANEL_W, JOIN_PANEL_H, undefined, 'panelParchment');
+    const panel = panelResult.bg;
+    panel.setSiblingIndex(1000);
+
+    F.makeLabel('JoinTitle', panel, 0, JOIN_PANEL_H/2 - 32, JOIN_PANEL_W - 40, 36,
+      FONTS.HEADER, '加入房间', COLORS.TEXT_DARK)
+      .horizontalAlign = Label.HorizontalAlign.CENTER;
+
+    // Room ID input
+    const editBox = F.makeEditBox('RoomIdInput', panel, 0, 70, JOIN_PANEL_W - 100, 52, '输入房间号', FONTS.BODY);
+    const savedRoomId = sys.localStorage.getItem(LAST_ROOM_ID_KEY) ?? '';
+    if (savedRoomId) editBox.string = savedRoomId;
+    this.roomIdEditBox = editBox;
+
+    // Join button
+    const joinBtn = F.makeButton('JoinConfirmBtn', '加入', panel, 0, -10, 280, 56, FONTS.BUTTON, 'primary');
+    F.addButtonFeedback(joinBtn.button);
+    joinBtn.button.node.on(Button.EventType.CLICK, () => this.joinRoom());
+
+    // Room list
+    const roomListLabel = F.makeLabel('RoomListTitle', panel, 0, -80, JOIN_PANEL_W - 40, 28,
+      FONTS.SMALL, '可用房间 (点击加入)', COLORS.TEXT_DARK);
+    roomListLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+
+    const listContainer = F.makeNode('RoomListContainer', panel, 0, -155, JOIN_PANEL_W - 40, 140);
+    this.roomListNode = listContainer;
+    this.renderRoomList();
+
+    // Close button
+    const closeBtn = F.makeButton('CloseJoinBtn', '✕', panel, JOIN_PANEL_W/2 - 40, JOIN_PANEL_H/2 - 36, 48, 40, 20, 'normal');
+    closeBtn.button.node.on(Button.EventType.CLICK, () => {
+      panel.destroy();
+      overlay.destroy();
+      this.joinPanelNode = null;
+    });
+
+    this.joinPanelNode = panel;
+    this.joinPanelNode['_overlay'] = overlay;
   }
 
-  tapCandle(): void {
-    this.tapProp('CandleProp', '烛火晃了一下。');
+  private renderRoomList(): void {
+    if (!this.roomListNode?.isValid) return;
+    F.clearChildren(this.roomListNode);
+
+    this.roomList = createMockRoomList();
+
+    this.roomList.forEach((room, index) => {
+      const y = 50 - index * 46;
+      const itemW = 420;
+      const itemH = 40;
+      const item = F.makeNode(`Room_${room.roomId}`, this.roomListNode!, 0, y, itemW, itemH);
+
+      const g = item.getComponent(Graphics) ?? item.addComponent(Graphics);
+      g.clear();
+      g.fillColor = room.canJoin ? COLORS.WOOD_LIGHT : new Color(100, 80, 60, 180);
+      g.strokeColor = COLORS.GOLD_BORDER;
+      g.lineWidth = 1;
+      g.roundRect(-itemW/2, -itemH/2, itemW, itemH, 6);
+      g.fill();
+      g.stroke();
+
+      const text = `${room.roomId} | ${room.hostName} | ${room.playerCount}/${room.maxPlayers} | ${room.gameMode}`;
+      const label = F.makeLabel(`RoomLabel_${room.roomId}`, item, 0, 0, itemW - 16, itemH - 4, 14, text, COLORS.TEXT_LIGHT);
+      label.horizontalAlign = Label.HorizontalAlign.CENTER;
+
+      if (room.canJoin) {
+        item.on(Node.EventType.TOUCH_END, () => {
+          if (this.roomIdEditBox) {
+            this.roomIdEditBox.string = room.roomId;
+          }
+          this.joinRoom();
+        });
+      }
+    });
+
+    if (this.roomList.length === 0) {
+      F.makeLabel('RoomListEmpty', this.roomListNode, 0, 20, 400, 30, FONTS.SMALL,
+        '暂无房间 (Mock 数据)', COLORS.TEXT_DARK)
+        .horizontalAlign = Label.HorizontalAlign.CENTER;
+    }
   }
 
-  tapMug(): void {
-    this.tapProp('MugProp', '杯子被轻轻碰了一下。');
-  }
+  // ═══════════════════════════════════════════════════════════
+  // Actions
+  // ═══════════════════════════════════════════════════════════
 
-  tapCoinPouch(): void {
-    this.tapProp('CoinPouchProp', '钱袋发出一声轻响。');
-  }
-
-  openLobbyScene(): void {
-    director.loadScene('Lobby');
-  }
-
-  joinRoom(): void {
+  private joinRoom(): void {
     const roomId = this.roomIdEditBox?.string.trim();
     if (!roomId) {
-      this.gameManager?.setStatus('Type a room id first');
+      this.showToast('请输入房间号');
       return;
     }
 
@@ -183,20 +333,110 @@ export class HomeScene extends Component {
       { nickname: this.nickname, clientId: this.clientId, roomId },
       (response: Ack<{ roomId: string; playerId: string; room: Room }>) => {
         if (response?.ok && response.room) {
-          sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id);
+          sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id!);
         }
       }
     );
   }
 
-  requestRoomList(): void {
-    this.gameManager?.connect(this.serverUrl);
-    this.serverActions.requestRoomList((response: Ack<{ roomList: RoomListItem[] }>) => {
-      if (!response?.ok) return;
-      this.roomList = response.roomList ?? [];
-      this.renderRoomList();
-    });
+  private playDiceRoll(done: () => void): void {
+    const diceNode = this.node.getChildByName('DiceProp');
+    if (!diceNode) {
+      this.scheduleOnce(done, 0.2);
+      return;
+    }
+
+    const frames = this.diceRollFrames.filter(Boolean);
+    if (frames.length === 0) {
+      this.scheduleOnce(done, 0.2);
+      return;
+    }
+
+    const originalPos = diceNode.position.clone();
+    const interval = 0.06;
+    const repeat = Math.max(1, Math.floor(this.diceRollDuration / interval));
+    let index = 0;
+
+    const tick = () => {
+      const sprite = diceNode.getComponent(Sprite);
+      if (sprite) sprite.spriteFrame = frames[index % frames.length];
+      index += 1;
+    };
+
+    this.schedule(tick, interval, repeat, 0);
+    this.scheduleOnce(() => {
+      this.unschedule(tick);
+      done();
+    }, this.diceRollDuration);
   }
+
+  private playPropTap(node: Node, message: string): void {
+    const originalPos = node.position.clone();
+    tween(node)
+      .to(0.08, { position: new Vec3(originalPos.x, originalPos.y + 8, originalPos.z) })
+      .to(0.12, { position: originalPos })
+      .start();
+    this.showToast(message);
+  }
+
+  private renderStatus(status: string): void {
+    if (this.statusLabel?.isValid) {
+      this.statusLabel.string = status || '服务器未连接 — 展示模式';
+    }
+  }
+
+  private showToast(message: string): void {
+    if (this.toastLayer) {
+      this.toastLayer.show(message, 1.2);
+      return;
+    }
+    // Fallback toast
+    this.toastNode?.destroy();
+
+    const toast = F.makeNode('HomeToast', this.node, 0, -DESIGN_H/2 + 100, 520, 48);
+    this.toastNode = toast;
+    toast.setSiblingIndex(9999);
+
+    const g = toast.getComponent(Graphics) ?? toast.addComponent(Graphics);
+    F.drawWoodenPanel(g, -260, -24, 520, 48, 10);
+
+    const label = F.makeLabel('ToastLabel', toast, 0, 0, 500, 36, FONTS.SMALL, message, COLORS.TEXT_LIGHT);
+    label.horizontalAlign = Label.HorizontalAlign.CENTER;
+
+    this.scheduleOnce(() => {
+      if (this.toastNode === toast) {
+        toast.destroy();
+        this.toastNode = null;
+      }
+    }, 1.2);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Prefab Overlays
+  // ═══════════════════════════════════════════════════════════
+
+  private ensureOverlayPrefabs(): void {
+    if (this.toastLayerPrefab) {
+      const node = instantiate(this.toastLayerPrefab);
+      node.name = 'ToastLayer';
+      this.node.addChild(node);
+      node.setPosition(new Vec3(0, -555, 0));
+      node.getComponent(UITransform)?.setContentSize(560, 56);
+      this.toastLayer = node.getComponent(ToastLayer) ?? node.addComponent(ToastLayer);
+    }
+    if (this.ruleGuidePanelPrefab) {
+      const node = instantiate(this.ruleGuidePanelPrefab);
+      node.name = 'RuleGuidePanel';
+      this.node.addChild(node);
+      node.setPosition(Vec3.ZERO);
+      node.getComponent(UITransform)?.setContentSize(620, 520);
+      this.ruleGuidePanel = node.getComponent(RuleGuidePanel) ?? node.addComponent(RuleGuidePanel);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Auto-resume & Classic methods (preserved from original)
+  // ═══════════════════════════════════════════════════════════
 
   private tryAutoResume(): void {
     const savedRoomId = sys.localStorage.getItem(LAST_ROOM_ID_KEY);
@@ -214,394 +454,35 @@ export class HomeScene extends Component {
           this.gameManager?.setLocalPlayerId('');
           return;
         }
-        sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.roomId);
-        if (response.playerId) {
-          this.gameManager?.setLocalPlayerId(response.playerId);
+        sys.localStorage.setItem(LAST_ROOM_ID_KEY, (response as any).roomId);
+        if ((response as any).playerId) {
+          this.gameManager?.setLocalPlayerId((response as any).playerId);
         }
       }
     );
   }
 
-  private joinRoomById(roomId: string): void {
-    if (this.roomIdEditBox) {
-      this.roomIdEditBox.string = roomId;
-    }
-    this.joinRoom();
-  }
+  // Public API (called from external buttons or editor bindings)
+  createClassicRoom(): void { this.loadScene('ClassicMode'); }
+  openProfile(): void { director.loadScene('Profile'); }
+  openRuleGuide(): void { this.ruleGuidePanel?.open(); }
+  openLobbyScene(): void { director.loadScene('Lobby'); }
 
-  private createRoom(gameMode: GameMode, callback?: (ok: boolean, room?: Room) => void): void {
-    this.gameManager?.setLocalPlayer(this.clientId, this.nickname);
-    this.gameManager?.connect(this.serverUrl);
-    this.serverActions.createRoom(
-      { nickname: this.nickname, clientId: this.clientId, gameMode },
-      (response: Ack<{ room: Room }>) => {
-        if (response?.ok && response.room) {
-          sys.localStorage.setItem(LAST_ROOM_ID_KEY, response.room.id);
-          callback?.(true, response.room);
-          return;
-        }
-        callback?.(false);
-      }
-    );
-  }
-
-  private launchMode(gameMode: GameMode, fallbackScene: SceneName): void {
-    let receivedAck = false;
-    this.showToast(gameMode === 'pve_roguelite' ? '进入肉鸽模式...' : '创建房间...');
-
-    this.createRoom(gameMode, (ok, room) => {
-      receivedAck = true;
-      if (!ok) {
-        this.showToast('服务器暂时没有响应，先进入界面预览。');
-        this.loadScene(fallbackScene);
-        return;
-      }
-      this.loadScene(this.sceneForRoom(room, fallbackScene));
-    });
-
-    this.scheduleOnce(() => {
-      if (receivedAck || director.getScene()?.name !== 'Home') return;
-      this.showToast('服务器连接中，先进入界面预览。');
-      this.loadScene(fallbackScene);
-    }, this.fallbackSceneDelay);
-  }
-
-  private sceneForRoom(room: Room | undefined, fallbackScene: SceneName): SceneName {
-    if (!room) return fallbackScene;
-    if (room.phase === 'lobby') {
-      return this.lobbySceneForRoom(room);
-    }
-    if (room.phase === 'battle' || room.phase === 'gameOver') {
-      const mode = room.gameMode ?? room.settings?.gameMode;
-      return mode === 'pve_roguelite' ? 'RogueliteBattle' : 'Battle';
-    }
-    if (
-      room.phase === 'reward' ||
-      room.phase === 'roguelite_event' ||
-      room.phase === 'roguelite_shop' ||
-      room.phase === 'roguelite_rest' ||
-      room.phase === 'roguelite_continue'
-    ) {
-      return 'Roguelite';
-    }
-    return fallbackScene;
-  }
-
-  private lobbySceneForRoom(room: Room): SceneName {
-    const mode = room.gameMode ?? room.settings?.gameMode ?? 'classic';
-    if (mode === 'duo_2v2') return 'DuoLobby';
-    if (mode === 'pve_1v1') return 'PveLobby';
-    if (mode === 'pve_roguelite') return 'RogueliteLobby';
-    return 'Classic1v1Lobby';
-  }
-
-  private loadScene(sceneName: SceneName): void {
-    if (director.getScene()?.name === sceneName) return;
-    director.loadScene(sceneName);
-  }
-
-  private playDiceRoll(done: () => void): void {
-    const diceNode = this.node.getChildByName('RogueliteButton');
-    const sprite = diceNode?.getComponent(Sprite) ?? null;
-    const frames = this.diceRollFrames.filter(Boolean);
-
-    if (!sprite || frames.length === 0) {
-      this.scheduleOnce(done, 0.2);
-      return;
-    }
-
-    const originalFrame = sprite.spriteFrame;
-    const interval = 0.06;
-    const repeat = Math.max(1, Math.floor(this.diceRollDuration / interval));
-    let index = 0;
-
-    const tick = () => {
-      sprite.spriteFrame = frames[index % frames.length];
-      index += 1;
-    };
-
-    this.schedule(tick, interval, repeat, 0);
-    this.scheduleOnce(() => {
-      this.unschedule(tick);
-      sprite.spriteFrame = frames[Math.floor(Math.random() * frames.length)] ?? originalFrame;
-      done();
-    }, this.diceRollDuration);
-  }
-
-  private tapProp(nodeName: string, message: string): void {
-    const node = this.node.getChildByName(nodeName);
-    if (!node) return;
-
-    const originalPosition = node.position.clone();
-    tween(node)
-      .to(0.08, { position: new Vec3(originalPosition.x, originalPosition.y + 8, originalPosition.z) })
-      .to(0.12, { position: originalPosition })
-      .start();
-    this.showToast(message);
-  }
-
-  private renderStatus(status: string): void {
-    if (this.statusLabel) {
-      this.statusLabel.string = `Server: ${this.serverUrl}\nPlayer: ${this.nickname}\n${status}`;
-    }
-  }
-
-  private showInfoPanel(title: string, body: string): void {
-    this.infoPanelNode?.destroy();
-
-    const panel = this.ensureNode('HomeInfoPanel', 0, 0, 620, 520);
-    this.infoPanelNode = panel;
-    panel.setSiblingIndex(this.node.children.length - 1);
-
-    const graphics = panel.getComponent(Graphics) ?? panel.addComponent(Graphics);
-    graphics.clear();
-    graphics.fillColor = new Color(38, 22, 10, 238);
-    graphics.strokeColor = new Color(211, 157, 78, 255);
-    graphics.lineWidth = 4;
-    graphics.roundRect(-310, -260, 620, 520, 18);
-    graphics.fill();
-    graphics.stroke();
-
-    const titleLabel = this.ensureLabelInParent('TitleLabel', 0, 185, 560, 58, 30, panel);
-    titleLabel.string = title;
-    titleLabel.color = new Color(255, 225, 155, 255);
-
-    const bodyLabel = this.ensureLabelInParent('BodyLabel', 0, 25, 540, 260, 22, panel);
-    bodyLabel.string = body;
-    bodyLabel.color = new Color(255, 240, 204, 255);
-
-    const closeButton = this.createButtonInParent('CloseInfoButton', '关闭', 0, -185, 220, 56, 24, panel);
-    closeButton.node.on(Button.EventType.CLICK, this.closeInfoPanel, this);
-
-    const buttonGraphics = closeButton.node.getComponent(Graphics) ?? closeButton.node.addComponent(Graphics);
-    buttonGraphics.clear();
-    buttonGraphics.fillColor = new Color(132, 77, 31, 255);
-    buttonGraphics.strokeColor = new Color(255, 219, 142, 255);
-    buttonGraphics.lineWidth = 3;
-    buttonGraphics.roundRect(-110, -28, 220, 56, 12);
-    buttonGraphics.fill();
-    buttonGraphics.stroke();
-  }
-
-  private closeInfoPanel(): void {
-    this.infoPanelNode?.destroy();
-    this.infoPanelNode = null;
-  }
-
-  private showToast(message: string): void {
-    if (this.toastLayer) {
-      this.toastLayer.show(message, 1.2);
-      return;
-    }
-    this.toastNode?.destroy();
-
-    const toast = this.ensureNode('HomeToast', 0, -560, 520, 48);
-    this.toastNode = toast;
-    toast.setSiblingIndex(this.node.children.length - 1);
-
-    const graphics = toast.getComponent(Graphics) ?? toast.addComponent(Graphics);
-    graphics.clear();
-    graphics.fillColor = new Color(36, 21, 10, 220);
-    graphics.strokeColor = new Color(221, 166, 82, 230);
-    graphics.lineWidth = 2;
-    graphics.roundRect(-260, -24, 520, 48, 12);
-    graphics.fill();
-    graphics.stroke();
-
-    const label = this.ensureLabelInParent('ToastLabel', 0, 0, 500, 38, 18, toast);
-    label.string = message;
-    label.color = new Color(255, 232, 183, 255);
-
-    this.scheduleOnce(() => {
-      if (this.toastNode === toast) {
-        toast.destroy();
-        this.toastNode = null;
-      }
-    }, 1.2);
-  }
-
-  /** One-time warning for missing @property bindings when fallback UI is off. */
-  private warnMissingBindings(): void {
-    const missing: string[] = [];
-    if (!this.roomIdEditBox) missing.push('roomIdEditBox');
-    if (!this.joinRoomButton) missing.push('joinRoomButton');
-    if (!this.refreshRoomsButton) missing.push('refreshRoomsButton');
-    if (!this.roomListNode) missing.push('roomListNode');
-    if (missing.length > 0) {
-      console.warn(`[HomeScene] Missing @property bindings (no fallback UI): ${missing.join(', ')}. Bind them in the editor or set enableFallbackUi=true.`);
-    }
-  }
-
-  /** Fallback layout constants — only used when enableFallbackUi=true. */
-  private readonly FALLBACK = {
-    ROOM_ID:    { x: -120, y: -315, w: 260, h: 48 },
-    JOIN:       { x: 180, y: -315, w: 180, h: 48, fs: 20 },
-    REFRESH:    { x: 0, y: -375, w: 260, h: 44, fs: 18 },
-    ROOM_LIST:  { x: 0, y: -490, w: 640, h: 150 },
-    STATUS:     { x: 0, y: -585, w: 640, h: 80, fs: 18 },
-  };
-
-  private ensureMinimalUi(): void {
-    this.roomIdEditBox ??= this.ensureEditBox('RoomIdEditBox', this.FALLBACK.ROOM_ID.x, this.FALLBACK.ROOM_ID.y, this.FALLBACK.ROOM_ID.w, this.FALLBACK.ROOM_ID.h);
-    this.joinRoomButton ??= this.ensureButton('JoinRoomButton', '加入房间', this.FALLBACK.JOIN.x, this.FALLBACK.JOIN.y, this.FALLBACK.JOIN.w, this.FALLBACK.JOIN.h, this.FALLBACK.JOIN.fs);
-    this.refreshRoomsButton ??= this.ensureButton('RefreshRoomsButton', '刷新房间', this.FALLBACK.REFRESH.x, this.FALLBACK.REFRESH.y, this.FALLBACK.REFRESH.w, this.FALLBACK.REFRESH.h, this.FALLBACK.REFRESH.fs);
-    this.roomListNode ??= this.ensureNode('RoomList', this.FALLBACK.ROOM_LIST.x, this.FALLBACK.ROOM_LIST.y, this.FALLBACK.ROOM_LIST.w, this.FALLBACK.ROOM_LIST.h);
-    this.statusLabel ??= this.ensureLabel('StatusLabel', this.FALLBACK.STATUS.x, this.FALLBACK.STATUS.y, this.FALLBACK.STATUS.w, this.FALLBACK.STATUS.h, this.FALLBACK.STATUS.fs);
-  }
-
-  private ensureOverlayPrefabs(): void {
-    if (this.ruleGuidePanelPrefab) {
-      const node = instantiate(this.ruleGuidePanelPrefab);
-      node.name = 'RuleGuidePanel';
-      this.node.addChild(node);
-      node.setPosition(Vec3.ZERO);
-      const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
-      transform.setContentSize(620, 520);
-      this.ruleGuidePanel = node.getComponent(RuleGuidePanel) ?? node.addComponent(RuleGuidePanel);
-      this.ruleGuidePanel.panelFrame = this.overlayPanelFrame;
-      this.ruleGuidePanel.buttonFrame = this.overlayButtonFrame;
-    }
-
-    if (this.toastLayerPrefab) {
-      const node = instantiate(this.toastLayerPrefab);
-      node.name = 'ToastLayer';
-      this.node.addChild(node);
-      node.setPosition(new Vec3(0, -555, 0));
-      const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
-      transform.setContentSize(560, 56);
-      this.toastLayer = node.getComponent(ToastLayer) ?? node.addComponent(ToastLayer);
-      this.toastLayer.panelFrame = this.overlayButtonFrame ?? this.overlayPanelFrame;
-    }
-  }
-
-  private renderRoomList(): void {
-    if (!this.roomListNode) return;
-    this.clearChildren(this.roomListNode);
-
-    if (this.roomList.length === 0) {
-      const label = this.ensureLabelInParent('RoomListEmpty', 0, 30, 620, 44, 16, this.roomListNode);
-      label.string = '暂无房间，点击刷新房间';
-      return;
-    }
-
-    this.roomList.slice(0, 3).forEach((room, index) => {
-      const button = this.createButtonInParent(
-        `Room_${room.roomId}`,
-        `${room.roomId} | ${room.hostName} | ${room.playerCount}/${room.maxPlayers} | ${room.gameMode ?? 'classic'}`,
-        0,
-        50 - index * 50,
-        620,
-        42,
-        15,
-        this.roomListNode!
-      );
-      button.interactable = room.canJoin === true;
-      button.node.on(Button.EventType.CLICK, () => this.joinRoomById(room.roomId), this);
+  createRogueliteRoom(): void {
+    if (this.isLaunchingRoguelite) return;
+    this.isLaunchingRoguelite = true;
+    this.playDiceRoll(() => {
+      this.isLaunchingRoguelite = false;
+      this.launchMode('pve_roguelite', 'RogueliteLobby');
     });
   }
 
-  private ensureEditBox(name: string, x: number, y: number, width: number, height: number): EditBox {
-    const node = this.ensureNode(name, x, y, width, height);
-
-    const editBox = node.getComponent(EditBox) ?? node.addComponent(EditBox);
-    editBox.string = sys.localStorage.getItem(LAST_ROOM_ID_KEY) ?? '';
-    editBox.placeholder = '房间号';
-    editBox.maxLength = 16;
-
-    const textLabel = this.ensureChildLabel(node, 'TextLabel', width, height, 20);
-    const placeholderLabel = this.ensureChildLabel(node, 'PlaceholderLabel', width, height, 20);
-    placeholderLabel.string = '房间号';
-    editBox.textLabel = textLabel;
-    editBox.placeholderLabel = placeholderLabel;
-    return editBox;
+  createPveRoom(): void {
+    this.launchMode('pve_1v1', 'PveLobby');
   }
 
-  private ensureLabel(name: string, x: number, y: number, width: number, height: number, fontSize: number): Label {
-    return this.ensureLabelInParent(name, x, y, width, height, fontSize, this.node);
-  }
-
-  private ensureNode(name: string, x: number, y: number, width: number, height: number, parent = this.node): Node {
-    const node = parent.getChildByName(name) ?? new Node(name);
-    if (!node.parent) parent.addChild(node);
-    node.setPosition(new Vec3(x, y, 0));
-
-    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
-    transform.setContentSize(width, height);
-    return node;
-  }
-
-  private ensureLabelInParent(name: string, x: number, y: number, width: number, height: number, fontSize: number, parent: Node): Label {
-    const node = this.ensureNode(name, x, y, width, height, parent);
-    const label = node.getComponent(Label) ?? node.addComponent(Label);
-    label.fontSize = fontSize;
-    label.lineHeight = fontSize + 6;
-    label.enableWrapText = true;
-    return label;
-  }
-
-  private ensureButton(name: string, text: string, x: number, y: number, width: number, height: number, fontSize: number): Button {
-    const node = this.ensureNode(name, x, y, width, height);
-    const button = node.getComponent(Button) ?? node.addComponent(Button);
-    button.interactable = true;
-
-    const label = this.ensureChildLabel(node, 'Label', width, height, fontSize);
-    label.string = text;
-    return button;
-  }
-
-  private createButtonInParent(
-    name: string,
-    text: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    fontSize: number,
-    parent: Node
-  ): Button {
-    const node = new Node(name);
-    parent.addChild(node);
-    node.setPosition(new Vec3(x, y, 0));
-
-    const transform = node.addComponent(UITransform);
-    transform.setContentSize(width, height);
-
-    const button = node.addComponent(Button);
-    button.interactable = true;
-
-    const label = this.ensureChildLabel(node, 'Label', width, height, fontSize);
-    label.string = text;
-    return button;
-  }
-
-  private ensureChildLabel(parent: Node, name: string, width: number, height: number, fontSize: number): Label {
-    const node = parent.getChildByName(name) ?? new Node(name);
-    if (!node.parent) parent.addChild(node);
-    node.setPosition(Vec3.ZERO);
-
-    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
-    transform.setContentSize(width, height);
-
-    const label = node.getComponent(Label) ?? node.addComponent(Label);
-    label.fontSize = fontSize;
-    label.lineHeight = fontSize + 6;
-    label.enableWrapText = false;
-    label.color = new Color(255, 238, 196, 255);
-    return label;
-  }
-
-  private clearChildren(node: Node): void {
-    for (const child of [...node.children]) {
-      child.destroy();
-    }
-  }
-
-  private getClientId(): string {
-    const existing = sys.localStorage.getItem(CLIENT_ID_KEY);
-    if (existing) return existing;
-
-    const next = `cocos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    sys.localStorage.setItem(CLIENT_ID_KEY, next);
-    return next;
+  requestRoomList(): void {
+    this.roomList = createMockRoomList();
+    this.renderRoomList();
   }
 }
